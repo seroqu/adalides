@@ -1,51 +1,40 @@
 # adalides
 Spring and react latform to play with friends
 
-Adalides
-Bienvenido a adalid , el juego de mesa en
-el que has sido escogido como aspirante
-para reemplazar al demiurgo, en esta guía
-podrás encontrar todas las reglas
-concernientes a este juego.
-Componentes
-6 tableros de jugador
-48 marcadores de desarrollo (7 por color)
-114 dados (19 por color)
-30 exágonos de movimiento oculto (6 por
-color)
-12 mapas de combate (2 por jugador
-(Cada uno de 2 caras))
-200 cartas de campeón
-Objetivo del juego:
-El demiurgo, señor y creador de todo lo
-que ha existido y existirá, se quiere retirar
-y para reemplazarlo, nombró a 6 seres de
-inconmensurable poder como sus
-posibles sucesores, a cada uno de ellos
-los dotó con el poder de crear seres y les
-dió un poco de Éter, materia elemental
-con que se crea todas las cosa, les
-ordenó crear un ejército digno de su
-magnificencia, pero esta es una
-competencia a muerte, pues quien no
-tenga un ejercito digno del demiurgo se
-desintegrará poco a poco hasta quedar
-reducido al mismo Eter del que fue hecho
-Tu eres uno de esos adalides ¿serás
-capaz de gestionar tus recursos y tu
-ingenio para ganar el puesto de creador
-de todas las cosas?
-para lograrlo lo único que debes hacer es
-borrar a tus competidores de la existencia
-misma, cosa que lograrás cuando lleves
-sus puntos vitales a 0.
-Preparacion del juego:
-se comienza con 20 eter
-por ganar se dan 7
-en racha 2 por racha
-3 interés
-10 por ronda
-CLASES
+# **Adalides**
+
+Bienvenido a adalides , el juego de mesa en el que has sido escogido como aspirante para reemplazar al demiurgo, en esta guía podrás encontrar todas las reglas concernientes a este juego.
+
+
+### Componentes
+
+1. 6 tableros de jugador
+2. 48 marcadores de desarrollo (7 por color)
+3. 114 dados (19 por color)
+4. 30 exágonos de movimiento oculto (6 por color)
+5. 12 mapas de combate (2 por jugador (Cada uno de 2 caras))
+6. 200 cartas de campeón
+
+
+### Objetivo del juego:
+
+El demiurgo, señor y creador de todo lo que ha existido y existirá, se quiere retirar y para reemplazarlo, nombró a 6 seres de
+inconmensurable poder como sus posibles sucesores, a cada uno de ellos los dotó con el poder de crear seres y les dió un poco de Éter, materia elemental con que se crea todas las cosa, les ordenó crear un ejército digno de su magnificencia, pero esta es una
+competencia a muerte, pues quien no tenga un ejercito digno del demiurgo se desintegrará poco a poco hasta quedar reducido al mismo Eter del que fue hecho 
+
+Tu eres uno de esos adalides ¿serás capaz de gestionar tus recursos y tu ingenio para ganar el puesto de creador de todas las cosas?. 
+Para lograrlo lo único que debes hacer es borrar a tus competidores de la existencia misma, cosa que lograrás cuando lleves sus puntos vitales a 0.
+
+### Preparacion del juego:
+
+* se comienza con 20 eter
+* por ganar se dan 7
+* en racha 2 por racha
+* 3 interés
+* 10 por ronda
+
+# CLASES
+
 rojo fuego
 amarillo electrico
 café tierra
