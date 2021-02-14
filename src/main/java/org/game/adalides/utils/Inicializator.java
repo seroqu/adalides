@@ -1,6 +1,8 @@
 package org.game.adalides.utils;
 
+import org.game.adalides.domain.CardElement;
 import org.game.adalides.domain.User;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -8,6 +10,9 @@ import java.util.List;
 //Starting all the cards in new Game
 public class Inicializator {
 
+    @Autowired
+    private CardElement myCard;
+    public  int hola;
 
     final String elements[] = {"fire","electric","ground","air","ice","wild","robot","demon","angel","protector","asesins","mage"};
     private  List<User> usersInGame;
@@ -16,6 +21,7 @@ public class Inicializator {
         usersInGame = new ArrayList<>(numberOfPlayes);
 
         for (int i = 0; i < numberOfPlayes; i++) {
+
             User user2 = new User();
             User user = new User();
             user.setAlias("Jugador " + (i + 1));
@@ -25,23 +31,7 @@ public class Inicializator {
             user.setSpaces(0);
             user.setMyMap(3);
             user.setLevel(1);
-
             usersInGame.add(user);
-
         }
-
-
-
-
-
-
     }
-
-
-
-
-
-
-
-
 }

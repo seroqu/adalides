@@ -1,31 +1,64 @@
 package org.game.adalides.domain;
 
+import javax.persistence.*;
+import javax.validation.constraints.NotBlank;
+
+@Entity
+@Table(name = "card")
 public class CardElement {
 
-    private String type;
-    private short attack;
-    private short defense;
+    @Id
+    @GeneratedValue
+    @Column(name = "id_card")
+    private Long id;
+
+    @NotBlank
+    private String name;
+
     private short level;
     private short price;
-    private String element;
-    private String status;
+    @NotBlank
+    private short attack;
+    private short defense;
+
+    private String description;
+
+    //  private String element;
+    //  private String status;
 
 
-    public String getStatus() {
-        return status;
+    /*   public String getStatus() {
+           return status;
+       }
+
+       public void setStatus(String status) {
+           this.status = status;
+       }
+   */
+    public String getDescription() {
+        return description;
     }
 
-    public void setStatus(String status) {
-        this.status = status;
+    public void setDescription(String description) {
+        this.description = description;
     }
 
-    public String getType() {
-        return type;
+    public Long getId() {
+        return id;
     }
 
-    public void setType(String type) {
-        this.type = type;
+    public void setId(Long id) {
+        this.id = id;
     }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
 
     public short getAttack() {
         return attack;
@@ -51,6 +84,7 @@ public class CardElement {
         this.level = level;
     }
 
+
     public short getPrice() {
         return price;
     }
@@ -59,20 +93,14 @@ public class CardElement {
         this.price = price;
     }
 
-    public String getElement() {
+ /*   public String getElement() {
         return element;
     }
 
     public void setElement(String element) {
         this.element = element;
     }
-
-
-
-
-
-
-
+*/
 
 
 }
