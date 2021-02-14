@@ -25,7 +25,7 @@ public class Inicializator {
             User user2 = new User();
             User user = new User();
             user.setAlias("Jugador " + (i + 1));
-            user.setGameInSeries(0);
+          //  user.setGameInSeries(0);
             user.setMyEter(20);
             user.setLife(30);
             user.setSpaces(0);

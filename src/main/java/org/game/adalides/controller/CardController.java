@@ -38,14 +38,14 @@ public class CardController {
     // Update a Note
     @PutMapping("/cards/{id}")
     public CardElement updateNote(@PathVariable(value = "id") Long cardId,
-                           @Valid @RequestBody CardElement cardDetails) throws CardNotFoundException {
+                           @Valid @RequestBody CardElement usersDetails) throws CardNotFoundException {
 
         CardElement card = cardRepository.findById(cardId)
                 .orElseThrow(() -> new CardNotFoundException(cardId));
 
-        card.setName(card.getName());
-        card.setAttack(card.getAttack());
-        card.setDefense(card.getDefense());
+        card.setName(usersDetails.getName());
+        card.setAttack(usersDetails.getAttack());
+        card.setDefense(usersDetails.getDefense());
         //cart
         // card.setAuthor_name(bookDetails.getAuthor_name());
         // card.setIsbn(bookDetails.getIsbn());
@@ -65,6 +65,4 @@ public class CardController {
 
         return ResponseEntity.ok().build();
     }
-
-
 }
