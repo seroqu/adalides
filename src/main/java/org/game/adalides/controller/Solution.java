@@ -1,97 +1,72 @@
 package org.game.adalides.controller;
 import java.io.*;
+import java.math.BigInteger;
 import java.util.*;
-import java.text.*;
-import java.math.*;
-import java.util.regex.*;
-import java.lang.reflect.*;
+import java.util.function.Predicate;
+import java.util.stream.IntStream;
 
-class Prime {
-    void checkPrime(Integer... numbers) {
 
-        String result = "";
-        List<Integer> myList = Arrays.asList(numbers);
-        int counter = 0;
-
-        for (Integer item : myList) {
-
-            if (item == 2) {
-                result = result.equals("") ? item.toString() : result + " " + 2;
-            } else if (item == 1 || item % 2 == 0) {
-                continue;
-            } else {
-                for (int j = 3; j < item; j += 2) {
-                    if (item % j == 0) {
-                        result = result.equals("") ? item.toString() : result + " " + item;
-                        break;
-                    }
-                }
-            }
-            System.out.println(result);
-        }
+interface PerformOperation {
+    boolean check(int a);
+}
+class MyMath {
+    public static boolean checker(PerformOperation p, int num) {
+        return p.check(num);
     }
+
+    public static PerformOperation is_odd(){
+        return (int a) -> a % 2 != 0;
+    }
+
+    static PerformOperation isOdd(){
+        return  (int a) -> a % 2 == 0;
+
+    }
+
+    public static  PerformOperation isPrime(){
+
+
+        return  (int x) -> java.math.BigInteger.valueOf(x).isProbablePrime(1);
+    }
+    public static  PerformOperation isPalindrome(){
+        return  (int x) ->  String.valueOf(x).equals(new StringBuilder(String.valueOf(x)).reverse().toString());
+    }
+
+
+
+
 }
 
 public class Solution {
-    static InputStream in;
 
-    public static void main(String[] args) {
-        try {
-            BufferedReader br = new BufferedReader(new InputStreamReader(in));
-            int n1 = Integer.parseInt(br.readLine());
-            int n2 = Integer.parseInt(br.readLine());
-            int n3 = Integer.parseInt(br.readLine());
-            int n4 = Integer.parseInt(br.readLine());
-            int n5 = Integer.parseInt(br.readLine());
-            Prime ob = new Prime();
-            ob.checkPrime(n1);
-            ob.checkPrime(n1, n2);
-            ob.checkPrime(n1, n2, n3);
-            ob.checkPrime(n1, n2, n3, n4, n5);
-            Method[] methods = Prime.class.getDeclaredMethods();
-            Set<String> set = new HashSet<>();
-            boolean overload = false;
-            for (int i = 0; i < methods.length; i++) {
-                if (set.contains(methods[i].getName())) {
-                    overload = true;
-                    break;
-                }
-                set.add(methods[i].getName());
+    public static void main(String[] args) throws IOException {
+        MyMath ob = new MyMath();
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        int T = Integer.parseInt(br.readLine());
+        PerformOperation op;
+        boolean ret = false;
+        String ans = null;
+        while (T--> 0) {
+            String s = br.readLine().trim();
+            StringTokenizer st = new StringTokenizer(s);
+            int ch = Integer.parseInt(st.nextToken());
+            int num = Integer.parseInt(st.nextToken());
+            if (ch == 1) {
+                op = ob.isOdd();
+                ret = ob.checker(op, num);
+                ans = (ret) ? "ODD" : "EVEN";
+            } else if (ch == 2) {
+                op = ob.isPrime();
+                ret = ob.checker(op, num);
+                ans = (ret) ? "PRIME" : "COMPOSITE";
+            } else if (ch == 3) {
+                op = ob.isPalindrome();
+                ret = ob.checker(op, num);
+                ans = (ret) ? "PALINDROME" : "NOT PALINDROME";
 
             }
-            if (overload) {
-                throw new Exception("Overloading not allowed");
-            }
-        } catch (Exception e) {
-            System.out.println(e);
+            System.out.println(ans);
         }
-    }
-
-}
-
-class MyCalculator {
-
-    void add(Integer... myNumbers) {
-        String result = "";
-        List<Integer> myList = Arrays.asList(myNumbers);
-        int counter = 0;
-
-        for (Integer item : myList) {
-            counter = counter + item;
-            result = result.equals("") ? item.toString() : result + " + " + item;
-        }
-        System.out.println(result + " = " + counter);
-    }
-
-    long power(int number, int p) throws Exception {
-
-        if (number < 0 || p < 0) {
-            throw new Exception("n or p should not be negative.");
-        } else if (number == 0 || p == 0) {
-            throw new Exception("n and p should not be zero");
-        }
-        long result = (long) Math.pow(number, p);
-        return result;
     }
 }
 
