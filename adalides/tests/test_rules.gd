@@ -15,6 +15,11 @@ func _init() -> void:
 	test_combat_deterministic()
 	test_combat_wipe()
 	test_block_overflow()
+	test_reserve_and_shop()
+	test_deck()
+	test_roster()
+	test_death_rattle()
+	test_full_game()
 	print("\n%d pruebas correctas, %d fallos" % [_passes, _failures])
 	quit(1 if _failures > 0 else 0)
 
@@ -52,6 +57,11 @@ func test_economy() -> void:
 	Economy.punish_loser(a, 5)
 	check(a.streak == 0 and a.vitality == Rules.STARTING_VITALITY - 5, "perder resetea racha y quita vida")
 	check(a.buy(Catalog.by_id("golem")) and a.eter == 24, "comprar descuenta el coste")
+	a.no_interest_rounds = 1
+	check(Economy.interest(a) == 0, "Cristalizar anula el interés")
+	a.no_interest_rounds = 0
+	a.interest_override = 2
+	check(Economy.interest(a) == 2, "Encantamiento baja el interés a 2")
 	a.eter = 0
 	check(not a.buy(Catalog.by_id("golem")), "no se puede comprar sin Éter")
 
@@ -140,6 +150,102 @@ func test_block_overflow() -> void:
 	board_b.place(guard, 1)
 	ward.blocked_by = guard
 	var combat := Combat.new(board_a, board_b)
-	combat._deal_damage(atk, board_a, ward, board_b, 20, "ataca")
+	combat.deal_damage(atk, board_a, ward, board_b, 20, "ataca")
 	check(not guard.alive, "el bloqueador muere")
 	check(not ward.alive, "el exceso mata al protegido")
+
+
+func test_reserve_and_shop() -> void:
+	var a := Adalid.new("A")
+	a.eter = 100
+	a.buy(Catalog.by_id("lobo"))
+	a.buy(Catalog.by_id("lobo"))
+	check(a.reserve.size() == 1 and a.reserve[0].duplicates == 1, "comprar dos veces la misma carta la duplica")
+	check(a.reserve[0].attack() == 4, "lobo duplicado: 3 + 1 de ataque")
+	a.buy(Catalog.by_id("arcangel"))
+	a.buy(Catalog.by_id("arcangel"))
+	check(a.find_card("arcangel").duplicates == 0 and a.reserve.size() == 3, "los legendarios no se duplican")
+	var value := a.sell(a.find_card("lobo"))
+	check(value == 1 and a.reserve.size() == 2, "vender devuelve la mitad del coste (mín. 1)")
+	a.sell_value_override = 1
+	check(a.sell_value(a.reserve[0]) == 1, "Deshonor: vender da 1")
+	a.eter = 9
+	check(not a.level_up(), "no sube de nivel sin Éter")
+	a.eter = 10
+	check(a.level_up() and a.level == 2 and a.eter == 0, "subir de nivel cuesta 10")
+
+
+func test_deck() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 3
+	var deck := Deck.new(rng)
+	check(deck.size() == 12 * 14 + 5 * 4 + 9 + 2, "el mazo tiene 199 cartas")
+	var hand := deck.draw(4)
+	check(hand.size() == 4 and deck.size() == 195, "robar saca cartas del mazo")
+	deck.put_back(hand)
+	check(deck.size() == 199, "devolver las reintegra")
+
+
+func test_roster() -> void:
+	var a := Adalid.new("A")
+	a.eter = 1000
+	for id in ["salamandra", "lobo", "golem", "plasma", "lava"]:
+		a.buy(Catalog.by_id(id))
+	var chosen: Array[Champion] = []
+	chosen.assign(a.reserve)
+	var errors := Roster.validate(a, chosen)
+	check(errors.size() == 3, "nivel 1: dos elementales dan 3 errores (nivel x2 y límite), tiene %d" % errors.size())
+	a.level = 2
+	errors = Roster.validate(a, chosen)
+	check(errors.size() == 1, "nivel 2: solo un elemental permitido")
+	a.level = 3
+	check(Roster.validate(a, chosen).is_empty(), "nivel 3 con Fuego (3): plasma y lava válidos")
+	var pick := Roster.auto_pick(a)
+	check(pick.size() == 5 and Roster.validate(a, pick).is_empty(), "la IA alinea las 5 cartas")
+	a.buy(Catalog.by_id("demonio_electrico"))
+	var with_hero: Array[Champion] = []
+	with_hero.assign(a.reserve)
+	check(not Roster.validate(a, with_hero).is_empty(), "un héroe necesita sinergia (5)")
+	a.kidnapped = a.find_card("lobo")
+	check(not a.usable_cards().has(a.kidnapped), "el secuestrado no se puede usar")
+
+
+func test_death_rattle() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 9
+	var killer := Adalid.new("K")
+	var victim := Adalid.new("V")
+	victim.add_card(Catalog.by_id("salamandra"))
+	victim.add_card(Catalog.by_id("plasma"))
+	check(DeathRattle.dominant_class(victim, rng) == Rules.ClassType.FUEGO, "clase dominante: Fuego")
+	DeathRattle.apply(killer, victim, rng)
+	check(killer.vitality == Rules.STARTING_VITALITY - 3, "Venganza ígnea quita 3")
+	var robot_victim := Adalid.new("R")
+	robot_victim.add_card(Catalog.by_id("dron"))
+	killer.eter = 20
+	DeathRattle.apply(killer, robot_victim, rng)
+	check(killer.eter == 10, "Hackeo quita la mitad del Éter")
+	var angel_victim := Adalid.new("B")
+	angel_victim.add_card(Catalog.by_id("querubin"))
+	angel_victim.eliminated = true
+	DeathRattle.apply(killer, angel_victim, rng)
+	check(not angel_victim.eliminated and angel_victim.vitality == 5 and angel_victim.reserve.is_empty(),
+		"Resurrección revive con 5 y sin ángeles")
+
+
+func test_full_game() -> void:
+	var g := Game.new(["A", "B", "C", "D", "E", "F"], 123)
+	var rounds := 0
+	while g.play_round() and rounds < 200:
+		rounds += 1
+	check(g.is_over(), "la partida termina")
+	check(g.winner() != null, "hay un demiurgo")
+	check(rounds > 1, "dura más de una ronda")
+	for a in g.adalids:
+		for ch in a.reserve:
+			check(not ch.annihilated, "no quedan aniquilados en las reservas")
+	var g2 := Game.new(["A", "B", "C", "D", "E", "F"], 123)
+	g2.play_round()
+	var g3 := Game.new(["A", "B", "C", "D", "E", "F"], 123)
+	g3.play_round()
+	check(g2.log == g3.log, "misma semilla, misma ronda")

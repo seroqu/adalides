@@ -9,7 +9,7 @@ extends Resource
 @export var cost: int = 1
 @export var attack: int = 1
 @export var defense: int = 1
-@export var range: Rules.Reach = Rules.Reach.CUERPO_A_CUERPO
+@export var reach: Rules.Reach = Rules.Reach.CUERPO_A_CUERPO
 ## Tabla de acciones: [{ "min": 1, "max": 3, "keywords": [Rules.Keyword.MOV] }, ...]
 @export var actions: Array[Dictionary] = []
 ## Texto de habilidades que aún no están implementadas en código.
@@ -19,7 +19,7 @@ extends Resource
 
 
 static func make(p_id: String, p_name: String, p_classes: Array[int], p_tier: Rules.Tier,
-		p_cost: int, p_attack: int, p_defense: int, p_range: Rules.Reach,
+		p_cost: int, p_attack: int, p_defense: int, p_reach: Rules.Reach,
 		p_actions: Array[Dictionary], p_notes := "", p_placeholder := false) -> ChampionData:
 	var c := ChampionData.new()
 	c.id = p_id
@@ -29,7 +29,7 @@ static func make(p_id: String, p_name: String, p_classes: Array[int], p_tier: Ru
 	c.cost = p_cost
 	c.attack = p_attack
 	c.defense = p_defense
-	c.range = p_range
+	c.reach = p_reach
 	c.actions = p_actions
 	c.notes = p_notes
 	c.placeholder = p_placeholder

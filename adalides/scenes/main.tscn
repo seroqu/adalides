@@ -29,25 +29,13 @@ theme_override_constants/separation = 8
 
 [node name="Title" type="Label" parent="Margin/VBox"]
 layout_mode = 2
-text = "Adalides — prototipo de combate"
+text = "Adalides — prototipo de partida"
 horizontal_alignment = 1
 
-[node name="Players" type="HBoxContainer" parent="Margin/VBox"]
-layout_mode = 2
-theme_override_constants/separation = 16
-
-[node name="Left" type="Label" parent="Margin/VBox/Players"]
+[node name="Standings" type="Label" parent="Margin/VBox"]
 unique_name_in_owner = true
 layout_mode = 2
-size_flags_horizontal = 3
-text = "Ana"
-
-[node name="Right" type="Label" parent="Margin/VBox/Players"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-text = "Bruno"
-horizontal_alignment = 2
+text = "Adalides"
 
 [node name="Controls" type="HBoxContainer" parent="Margin/VBox"]
 layout_mode = 2
@@ -67,14 +55,14 @@ unique_name_in_owner = true
 layout_mode = 2
 text = "Partida nueva"
 
-[node name="Simulate" type="Button" parent="Margin/VBox/Controls"]
+[node name="PlayRound" type="Button" parent="Margin/VBox/Controls"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Simular combate"
+text = "Jugar ronda"
 
 [node name="Log" type="RichTextLabel" parent="Margin/VBox"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
 scroll_following = true
-text = "Pulsa «Simular combate»."
+text = "Pulsa «Jugar ronda»."

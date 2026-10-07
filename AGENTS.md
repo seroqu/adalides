@@ -35,14 +35,19 @@ ambigua, pregunta en lugar de inventar.
     │   │   ├── synergy.gd       Conteo por clase y niveles 3/5/7 (Synergy)
     │   │   ├── battlefield.gd   Mapa de 6 posiciones, adyacencias, fuerza (Battlefield)
     │   │   ├── combat.gd        Simulador de combate por asaltos con IA simple (Combat)
-    │   │   └── game.gd          Estado de partida y montaje de mapas (Game)
+    │   │   ├── abilities.gd     Habilidades SPEC y pasivas de cartas concretas (Abilities)
+    │   │   ├── deck.gd          Baraja del demiurgo: copias, barajar, robar (Deck)
+    │   │   ├── roster.gd        Requisitos de alineación y la IA que elige el mapa (Roster)
+    │   │   ├── death_rattle.gd  Los 12 estertores (DeathRattle)
+    │   │   └── game.gd          Partida completa: preparación, 2D10, combates, eliminación (Game)
     │   ├── data/
     │   │   └── catalog.gd       Catálogo de cartas (Catalog)
     │   └── ui/
     │       └── main.gd          Script de la pantalla de prueba
     └── tests/
         ├── test_rules.gd        Pruebas de reglas (SceneTree, sin editor)
-        └── demo_combat.gd       Imprime un combate de ejemplo
+        ├── demo_combat.gd       Imprime un combate de ejemplo
+        └── demo_game.gd         Imprime una partida completa de 6 adalides
 ```
 
 Pendiente de crear: `resources/` (cartas como `.tres` cuando el catálogo se estabilice), `assets/` (arte, audio) y `autoload/`.
@@ -63,13 +68,22 @@ marcado con `SUPUESTO` en `scripts/core/rules.gd` y en los comentarios del códi
   en la mesa todo se revela a la vez.
 - PRO sin cantidad produce 1 de Éter; CUR sin valor cura 1.
 - "3 interés" se interpreta como +3 de Éter por ronda si se tiene Éter ahorrado.
+- Preparación: la tienda muestra 4 cartas (5 con Demonio (5)); subir de nivel cuesta
+  10 de Éter; vender devuelve la mitad del coste (mínimo 1). La baraja tiene 14 copias
+  de cada común, 4 de cada elemental y 1 de cada héroe/legendario (199 cartas).
+- Si al morir un adalid hay empate de clase dominante, el estertor se elige al azar.
+- Los campeones que mueren en combate vuelven a la reserva; solo los ANIQUILADOS
+  se pierden (y regresan a la baraja).
 - Las 12 cartas comunes del catálogo son relleno (`placeholder = true`); las 200
   cartas reales no están documentadas.
-- Sinergias implementadas: Asesino (3) sigilo y doble daño, Ángel (3)/(5) vida
-  inicial, Protector (3)/(5) bonus de DA y bloqueo, Tierra (5)/(7) reducción,
-  Aire (3)/(5)/(7) esquiva, Hielo (3) congelar, Robot (3)/(5) producción, Mago (3)/(5)
-  dados extra. El resto (Fuego, Eléctrico, Salvaje, Demonio, Ángel venganza, etc.)
-  y las habilidades `SPEC` de elementales y héroes solo están descritas en `notes`.
+- Sinergias implementadas (en `combat.gd`): todas las de las 12 clases en sus
+  niveles 3/5/7, con simplificaciones marcadas como SUPUESTO (p. ej. Eléctrico (5)/(7)
+  solo lanza más DA de carga; Aire (7) contraataca con una sola tirada).
+- Habilidades de carta implementadas (en `abilities.gd`): Plasma, Lava, Glacial,
+  Tormenta, Señores del aire (6), Demonio eléctrico, Demonio de arena, Mago de plasma,
+  Mago de tormenta (4-6), Gigantes, Androides, Cazador del viento, Arcángel, Señor demonio.
+  Pendientes: Señores del aire (3) mover enemigo, Mago de tormenta (2-3) desviar daño.
+- Fantasma (estertor de Mal) solo marca al adalid; aún no combate sin preparación.
 
 ## Convenciones
 
@@ -89,6 +103,7 @@ marcado con `SUPUESTO` en `scripts/core/rules.gd` y en los comentarios del códi
 - Ejecutar las pruebas de reglas (deben quedar en 0 fallos):
   `godot --headless --path adalides -s tests/test_rules.gd`
 - Ver un combate de ejemplo: `godot --headless --path adalides -s tests/demo_combat.gd -- 2026`
+- Ver una partida completa: `godot --headless --path adalides -s tests/demo_game.gd -- 2026`
 - Verificar que la escena principal carga: `godot --headless --path adalides --quit-after 5`
 - Abrir el editor: `godot -e --path adalides`
 - Rama principal: `master`. Commits en español, en presente ("Agrega la escena de combate").

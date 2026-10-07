@@ -16,6 +16,20 @@ const STARTING_VITALITY := 20 # SUPUESTO: las reglas no fijan la vitalidad inici
 const TIE_VITALITY_LOSS := 2
 const MAX_LEVEL := 3
 
+# --- Preparación ---
+const SHOP_SIZE := 4 # SUPUESTO: la tienda muestra 4 cartas (Demonio (5): 5).
+const LEVEL_UP_COST := 10 # SUPUESTO: subir de nivel cuesta 10 de Éter.
+const SELL_DIVISOR := 2 # SUPUESTO: vender devuelve la mitad del coste (mín. 1).
+const RANSOM_COST := 30 # Secuestro: rescate de la carta.
+const MAX_ELEMENTALS_BY_LEVEL := { 1: 0, 2: 1, 3: 2 }
+## Copias de cada carta en el mazo del demiurgo (≈200 cartas en total).
+const DECK_COPIES := {
+	Tier.COMUN: 14,
+	Tier.ELEMENTAL: 4,
+	Tier.HEROE: 1,
+	Tier.LEGENDARIO: 1,
+}
+
 # --- Combate ---
 const MAX_ROUNDS := 4 # Un combate dura máximo 4 asaltos.
 const BOARD_SIZE := 6 # SUPUESTO: 6 posiciones por mapa (6 hexágonos por color).

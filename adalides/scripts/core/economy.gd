@@ -9,8 +9,13 @@ static func round_income(adalid: Adalid) -> int:
 
 
 ## SUPUESTO: "3 interés" se interpreta como 3 de Éter si se tiene Éter ahorrado.
+## Cristalizar lo anula 3 turnos; Encantamiento lo baja a 2.
 static func interest(adalid: Adalid) -> int:
-	return Rules.INTEREST if adalid.eter > 0 else 0
+	if adalid.eter <= 0 or adalid.no_interest_rounds > 0:
+		return 0
+	if adalid.interest_override >= 0:
+		return adalid.interest_override
+	return Rules.INTEREST
 
 
 ## "En racha 2 por racha": 2 de Éter por cada victoria consecutiva.
@@ -21,6 +26,8 @@ static func streak_bonus(adalid: Adalid) -> int:
 static func apply_round_income(adalid: Adalid) -> int:
 	var income := round_income(adalid)
 	adalid.add_eter(income)
+	if adalid.no_interest_rounds > 0:
+		adalid.no_interest_rounds -= 1
 	return income
 
 
