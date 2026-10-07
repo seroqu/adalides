@@ -36,9 +36,9 @@ Bienvenido a Adalides, el juego de mesa en el que has sido escogido como aspiran
 | Cantidad | Componente | Detalle |
 |---------:|------------|---------|
 | 6 | Tableros de jugador | |
-| 48 | Marcadores de desarrollo | 7 por color |
+| 42 | Marcadores de desarrollo | 7 por color |
 | 114 | Dados | 19 por color |
-| 30 | Hexágonos de movimiento oculto | 6 por color |
+| 36 | Hexágonos de movimiento oculto | 6 por color |
 | 12 | Mapas de combate | 2 por jugador, cada uno de 2 caras |
 | 200 | Cartas de campeón | |
 

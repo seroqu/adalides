@@ -22,17 +22,54 @@ ambigua, pregunta en lugar de inventar.
 ├── .gitignore
 └── adalides/        Proyecto de Godot (abrir esta carpeta con el editor)
     ├── project.godot
-    ├── node_3d.tscn   Escena inicial (placeholder)
-    └── icon.svg
+    ├── scenes/
+    │   └── main.tscn            Pantalla de prueba: simula combates y muestra el registro
+    ├── scripts/
+    │   ├── core/                Reglas puras, sin nodos (se prueban en headless)
+    │   │   ├── rules.gd         Constantes, enums y supuestos (Rules)
+    │   │   ├── dice.gd          Tiradas d6: pifia / fallo / acierto / crítico (Dice)
+    │   │   ├── champion_data.gd Carta de campeón: clases, nivel, coste, tabla de acciones (ChampionData)
+    │   │   ├── champion.gd      Campeón en juego: vida, congelado, sigilo, duplicados (Champion)
+    │   │   ├── adalid.gd        Jugador: vitalidad, Éter, racha, nivel, reserva (Adalid)
+    │   │   ├── economy.gd       Ingresos, interés, racha, premio y castigo (Economy)
+    │   │   ├── synergy.gd       Conteo por clase y niveles 3/5/7 (Synergy)
+    │   │   ├── battlefield.gd   Mapa de 6 posiciones, adyacencias, fuerza (Battlefield)
+    │   │   ├── combat.gd        Simulador de combate por asaltos con IA simple (Combat)
+    │   │   └── game.gd          Estado de partida y montaje de mapas (Game)
+    │   ├── data/
+    │   │   └── catalog.gd       Catálogo de cartas (Catalog)
+    │   └── ui/
+    │       └── main.gd          Script de la pantalla de prueba
+    └── tests/
+        ├── test_rules.gd        Pruebas de reglas (SceneTree, sin editor)
+        └── demo_combat.gd       Imprime un combate de ejemplo
 ```
 
-Organización prevista dentro de `adalides/` a medida que crezca:
+Pendiente de crear: `resources/` (cartas como `.tres` cuando el catálogo se estabilice), `assets/` (arte, audio) y `autoload/`.
 
-- `scenes/` — escenas `.tscn` (una carpeta por sistema: `combate/`, `tienda/`, `ui/`).
-- `scripts/` — scripts `.gd` que no van pegados a una escena concreta (reglas, dados, estado del juego).
-- `resources/` — recursos `.tres` (cartas de campeón, sinergias, configuración).
-- `assets/` — arte, audio, fuentes.
-- `autoload/` — singletons registrados en `project.godot`.
+## Supuestos de implementación
+
+Las reglas del README no cubren todo. Lo que se decidió para poder jugar está
+marcado con `SUPUESTO` en `scripts/core/rules.gd` y en los comentarios del código:
+
+- Vitalidad inicial del adalid: 20.
+- Dados: todos son d6. Pifia = 1, acierto = 4–6, crítico = 6 (también cuenta como acierto).
+- Cada adalid forma 3 parejas DA+DP por asalto (Mago (3) da +1, Mago (5) otro +1).
+- El mapa tiene 6 posiciones. Los dos mapas se enfrentan como filas: la posición `i`
+  es adyacente a las enemigas `i-1`, `i`, `i+1` y a las propias `i-1`, `i+1`.
+  El "espacio contrario" del Emboscador es la posición enemiga con el mismo número.
+- Las acciones defensivas (BLOCK, ESQ) se aplican antes de resolver el daño del
+  mismo asalto, aunque el orden escrito ponga ofensivas antes que defensivas:
+  en la mesa todo se revela a la vez.
+- PRO sin cantidad produce 1 de Éter; CUR sin valor cura 1.
+- "3 interés" se interpreta como +3 de Éter por ronda si se tiene Éter ahorrado.
+- Las 12 cartas comunes del catálogo son relleno (`placeholder = true`); las 200
+  cartas reales no están documentadas.
+- Sinergias implementadas: Asesino (3) sigilo y doble daño, Ángel (3)/(5) vida
+  inicial, Protector (3)/(5) bonus de DA y bloqueo, Tierra (5)/(7) reducción,
+  Aire (3)/(5)/(7) esquiva, Hielo (3) congelar, Robot (3)/(5) producción, Mago (3)/(5)
+  dados extra. El resto (Fuego, Eléctrico, Salvaje, Demonio, Ángel venganza, etc.)
+  y las habilidades `SPEC` de elementales y héroes solo están descritas en `notes`.
 
 ## Convenciones
 
@@ -47,10 +84,12 @@ Organización prevista dentro de `adalides/` a medida que crezca:
 
 ## Flujo de trabajo
 
-- Verificar que el proyecto carga sin errores:
-  `godot --headless --path adalides --quit`
-- Ejecutar una escena concreta en headless:
-  `godot --headless --path adalides scenes/<escena>.tscn --quit-after 60`
+- Tras crear scripts nuevos con `class_name`, regenerar la caché de clases:
+  `godot --headless --path adalides --import`
+- Ejecutar las pruebas de reglas (deben quedar en 0 fallos):
+  `godot --headless --path adalides -s tests/test_rules.gd`
+- Ver un combate de ejemplo: `godot --headless --path adalides -s tests/demo_combat.gd -- 2026`
+- Verificar que la escena principal carga: `godot --headless --path adalides --quit-after 5`
 - Abrir el editor: `godot -e --path adalides`
 - Rama principal: `master`. Commits en español, en presente ("Agrega la escena de combate").
 - No subir `adalides/.godot/` ni exportaciones; ya están en `.gitignore`.
