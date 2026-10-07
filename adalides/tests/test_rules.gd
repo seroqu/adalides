@@ -20,6 +20,7 @@ func _init() -> void:
 	test_roster()
 	test_death_rattle()
 	test_full_game()
+	test_human_flow()
 	print("\n%d pruebas correctas, %d fallos" % [_passes, _failures])
 	quit(1 if _failures > 0 else 0)
 
@@ -249,3 +250,37 @@ func test_full_game() -> void:
 	var g3 := Game.new(["A", "B", "C", "D", "E", "F"], 123)
 	g3.play_round()
 	check(g2.log == g3.log, "misma semilla, misma ronda")
+
+
+func test_human_flow() -> void:
+	# Un humano que compra, alinea y empareja a mano debe poder jugar hasta el final.
+	var g := Game.new(["Yo", "B", "C", "D", "E", "F"], 77)
+	g.set_human(0)
+	var rounds := 0
+	var combats := 0
+	while g.begin_round() and rounds < 200:
+		rounds += 1
+		if g.state == Game.State.SHOPPING:
+			check(not g.shop.is_empty(), "la tienda del humano tiene cartas")
+			var before := g.human.eter
+			var card: ChampionData = g.shop[0]
+			if g.human.can_pay(card.cost):
+				check(g.human_buy(card) and g.human.eter == before - card.cost, "comprar a mano descuenta el coste")
+			g.finish_shopping()
+			check(g.state == Game.State.LINEUP, "tras comprar toca alinear")
+			var bad: Array[Champion] = []
+			for ch in g.human.reserve:
+				bad.append(ch)
+			for _i in 7 - bad.size():
+				bad.append(Champion.new(Catalog.by_id("arcangel")))
+			check(not g.set_lineup(bad).is_empty(), "siete cartas o un legendario en nivel 1 se rechazan")
+			check(g.set_lineup(Roster.auto_pick(g.human)).is_empty(), "una alineación válida arranca los combates")
+		while g.state == Game.State.COMBAT:
+			combats += 1
+			var combat := g.current_combat
+			check(combat.round_no >= 1, "el combate humano empieza con dados lanzados")
+			g.commit_human_pairs(combat.auto_pairs(0))
+			check(combats < 2000, "el combate humano no se queda en bucle")
+		check(g.state == Game.State.ROUND_END or g.state == Game.State.OVER, "la ronda termina en un estado conocido")
+	check(g.is_over(), "la partida con humano termina")
+	check(combats > 0, "el humano combatió")

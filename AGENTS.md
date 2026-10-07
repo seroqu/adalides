@@ -23,7 +23,7 @@ ambigua, pregunta en lugar de inventar.
 └── adalides/        Proyecto de Godot (abrir esta carpeta con el editor)
     ├── project.godot
     ├── scenes/
-    │   └── main.tscn            Pantalla de prueba: simula combates y muestra el registro
+    │   └── main.tscn            Pantalla de partida (la UI se construye en código en scripts/ui/main.gd)
     ├── scripts/
     │   ├── core/                Reglas puras, sin nodos (se prueban en headless)
     │   │   ├── rules.gd         Constantes, enums y supuestos (Rules)
@@ -43,7 +43,7 @@ ambigua, pregunta en lugar de inventar.
     │   ├── data/
     │   │   └── catalog.gd       Catálogo de cartas (Catalog)
     │   └── ui/
-    │       └── main.gd          Script de la pantalla de prueba
+    │       └── main.gd          Partida jugable: tienda, alineación, combate (tú contra 5 IA)
     └── tests/
         ├── test_rules.gd        Pruebas de reglas (SceneTree, sin editor)
         ├── demo_combat.gd       Imprime un combate de ejemplo
@@ -85,6 +85,20 @@ marcado con `SUPUESTO` en `scripts/core/rules.gd` y en los comentarios del códi
   Pendientes: Señores del aire (3) mover enemigo, Mago de tormenta (2-3) desviar daño.
 - Fantasma (estertor de Mal) solo marca al adalid; aún no combate sin preparación.
 
+## Cómo fluye una partida con jugador humano
+
+`Game` es una máquina de estados (`Game.State`): `begin_round()` cobra, prepara a
+las IA y abre la tienda del humano (`SHOPPING`); `finish_shopping()` pasa a `LINEUP`;
+`set_lineup(cartas)` valida con `Roster.validate` y, si es válida, hace el
+emparejamiento y resuelve los combates de la IA hasta llegar al del humano
+(`COMBAT`). En combate, `Combat` también va por pasos: `begin_round()` lanza los
+dados de ambos y `commit_human_pairs([[dp, da], ...])` resuelve el asalto. Cuando
+no queda nada que decidir, `advance()` termina la ronda (`ROUND_END` u `OVER`).
+Sin humano (`human == null`), `play_round()` hace todo con la IA: así corren las pruebas.
+
+Las decisiones que aún toma la IA por el humano: a quién atacar (el enemigo con
+menos vida al alcance), hacia dónde mover y a quién bloquear o curar.
+
 ## Convenciones
 
 - Lenguaje: GDScript con tipado estático (`var vida: int = 20`, `func atacar() -> void`).
@@ -105,6 +119,8 @@ marcado con `SUPUESTO` en `scripts/core/rules.gd` y en los comentarios del códi
 - Ver un combate de ejemplo: `godot --headless --path adalides -s tests/demo_combat.gd -- 2026`
 - Ver una partida completa: `godot --headless --path adalides -s tests/demo_game.gd -- 2026`
 - Verificar que la escena principal carga: `godot --headless --path adalides --quit-after 5`
+- Capturar la interfaz en cada fase (abre una ventana real unos segundos):
+  `godot --path adalides --resolution 1400x900 -- --screenshots /ruta/de/salida`
 - Abrir el editor: `godot -e --path adalides`
 - Rama principal: `master`. Commits en español, en presente ("Agrega la escena de combate").
 - No subir `adalides/.godot/` ni exportaciones; ya están en `.gitignore`.

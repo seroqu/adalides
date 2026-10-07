@@ -10,6 +10,11 @@ var rng: RandomNumberGenerator
 var log: PackedStringArray = []
 var round_no: int = 0
 var fire_fumbles: Array[int] = [0, 0] # Pifias de DF acumuladas por lado (Fuego).
+## Dados lanzados en el asalto en curso, por lado: { "da": Array[int], "dp": Array[int] }.
+var dice: Array[Dictionary] = [{}, {}]
+var started: bool = false
+var finished: bool = false
+var result: Dictionary = {}
 
 
 func _init(a: Battlefield, b: Battlefield, p_rng: RandomNumberGenerator = null) -> void:
@@ -17,14 +22,74 @@ func _init(a: Battlefield, b: Battlefield, p_rng: RandomNumberGenerator = null) 
 	rng = p_rng if p_rng != null else RandomNumberGenerator.new()
 
 
-## Ejecuta el combate y devuelve { winner: Adalid|null, loser, rounds, damage, tie }.
+## Ejecuta el combate completo con la IA en ambos lados.
+## Devuelve { winner: Adalid|null, loser, rounds, damage, tie }.
 func run() -> Dictionary:
+	start()
+	while begin_round():
+		commit_round([auto_pairs(0), auto_pairs(1)])
+	return finish()
+
+
+# --- Ejecución paso a paso (para que un jugador humano decida) ---
+
+func start() -> void:
+	if started:
+		return
+	started = true
 	log_line("=== Combate: %s vs %s ===" % [sides[0].owner.display_name, sides[1].owner.display_name])
 	_start_of_combat()
-	while round_no < Rules.MAX_ROUNDS and not _someone_wiped():
-		round_no += 1
-		_play_round()
-	return _finish()
+
+
+## Empieza un asalto: reinicia marcas, aplica cargas y lanza los dados de ambos.
+## Devuelve false si el combate ya terminó.
+func begin_round() -> bool:
+	if not started:
+		start()
+	if is_finished():
+		return false
+	round_no += 1
+	log_line("--- Asalto %d ---" % round_no)
+	for i in 2:
+		for ch in sides[i].alive():
+			ch.reset_round_flags()
+			if ch.frozen_turns > 0:
+				ch.frozen_turns -= 1
+				if ch.frozen_turns == 0:
+					ch.frozen = false
+		_electric_charges(i)
+	for i in 2:
+		dice[i] = _roll_dice(i)
+		log_line("%s lanza DA %s y DP %s" % [sides[i].owner.display_name, dice[i]["da"], dice[i]["dp"]])
+	return true
+
+
+## Resuelve el asalto con las parejas de cada lado: Array de [dp, da] (da = -1: solo DP).
+func commit_round(pairs_by_side: Array) -> void:
+	var actions: Array[Dictionary] = []
+	for i in 2:
+		actions.append_array(actions_from_pairs(i, pairs_by_side[i]))
+	# Las defensivas se marcan antes de resolver daño: en la mesa todas las
+	# acciones se revelan a la vez, así que un BLOCK/ESQ protege en este asalto.
+	_resolve_phase(actions, Rules.Phase.MOVIMIENTO)
+	_resolve_phase(actions, Rules.Phase.DEFENSIVA)
+	_resolve_phase(actions, Rules.Phase.OFENSIVA)
+	_resolve_phase(actions, Rules.Phase.ESPECIAL)
+	_bury_dead()
+	for s in sides:
+		log_line("%s: %s" % [s.owner.display_name, " | ".join(s.describe())])
+
+
+func is_finished() -> bool:
+	return finished or round_no >= Rules.MAX_ROUNDS or _someone_wiped()
+
+
+func finish() -> Dictionary:
+	if finished:
+		return result
+	finished = true
+	result = _finish()
+	return result
 
 
 func log_line(line: String) -> void:
@@ -80,33 +145,6 @@ func _start_of_combat() -> void:
 
 # ---------------------------------------------------------------- asaltos
 
-func _play_round() -> void:
-	log_line("--- Asalto %d ---" % round_no)
-	for i in 2:
-		for ch in sides[i].alive():
-			ch.reset_round_flags()
-			if ch.frozen_turns > 0:
-				ch.frozen_turns -= 1
-				if ch.frozen_turns == 0:
-					ch.frozen = false
-		_electric_charges(i)
-
-	var actions: Array[Dictionary] = []
-	for i in 2:
-		actions.append_array(_declare_actions(i))
-
-	# Las defensivas se marcan antes de resolver daño: en la mesa todas las
-	# acciones se revelan a la vez, así que un BLOCK/ESQ protege en este asalto.
-	_resolve_phase(actions, Rules.Phase.MOVIMIENTO)
-	_resolve_phase(actions, Rules.Phase.DEFENSIVA)
-	_resolve_phase(actions, Rules.Phase.OFENSIVA)
-	_resolve_phase(actions, Rules.Phase.ESPECIAL)
-
-	_bury_dead()
-	for s in sides:
-		log_line("%s: %s" % [s.owner.display_name, " | ".join(s.describe())])
-
-
 ## Eléctrico (3)/(5)/(7): antes del asalto, lanza DA y pone cargas por acierto.
 func _electric_charges(side: int) -> void:
 	var board := sides[side]
@@ -137,8 +175,8 @@ func _electric_charges(side: int) -> void:
 					break
 
 
-## Lanza DA y DP del lado `side` y devuelve las acciones emparejadas.
-func _declare_actions(side: int) -> Array[Dictionary]:
+## Lanza los DA y DP de un lado aplicando Robot (3)/(5).
+func _roll_dice(side: int) -> Dictionary:
 	var board := sides[side]
 	var enemy := enemy_of(side)
 	var dice_count := Rules.BASE_ACTION_DICE + _mago_bonus(board)
@@ -151,25 +189,59 @@ func _declare_actions(side: int) -> Array[Dictionary]:
 		da = Dice.roll_many(rng, dice_count)
 		log_line("%s vuelve a lanzar sus DA (Robot)." % board.owner.display_name)
 	var dp := Dice.roll_many(rng, dice_count)
-	da.sort()
-	da.reverse() # Usamos primero los DA más altos.
-	log_line("%s lanza DA %s y DP %s" % [board.owner.display_name, da, dp])
+	return { "da": da, "dp": dp }
 
-	var actions: Array[Dictionary] = []
-	for p in dp:
-		var slot := p - 1
-		var ch := board.champion_at(slot)
+
+## IA de emparejamiento: usa primero los DA más altos sobre los DP que apunten
+## a un campeón vivo; un DP sobre un congelado se gasta solo para descongelar.
+func auto_pairs(side: int) -> Array:
+	var board := sides[side]
+	var da: Array[int] = []
+	da.assign(dice[side].get("da", []))
+	da.sort()
+	da.reverse()
+	var pairs: Array = []
+	for p in dice[side].get("dp", []):
+		var ch := board.champion_at(p - 1)
 		if ch == null or not ch.alive:
 			continue
-		if ch.frozen and ch.frozen_turns == 0:
-			ch.frozen = false # Gastar un DP en esa posición descongela.
-			log_line("  %s se descongela." % ch.data.display_name)
-			continue
 		if ch.frozen:
+			pairs.append([p, -1])
 			continue
 		if da.is_empty():
 			break
-		var value: int = da.pop_front()
+		pairs.append([p, da.pop_front()])
+	return pairs
+
+
+## Convierte parejas [dp, da] en acciones. Valida que cada dado se use una vez.
+func actions_from_pairs(side: int, pairs: Array) -> Array[Dictionary]:
+	var board := sides[side]
+	var da_left: Array[int] = []
+	da_left.assign(dice[side].get("da", []))
+	var dp_left: Array[int] = []
+	dp_left.assign(dice[side].get("dp", []))
+	var actions: Array[Dictionary] = []
+	for pair in pairs:
+		var p: int = pair[0]
+		var v: int = pair[1]
+		if not dp_left.has(p):
+			continue
+		dp_left.erase(p)
+		var slot := p - 1
+		var ch := board.champion_at(slot)
+		if ch == null or not ch.alive:
+			log_line("  DP %d → casilla vacía." % p)
+			continue
+		if ch.frozen:
+			if ch.frozen_turns == 0:
+				ch.frozen = false # Gastar un DP en esa posición descongela.
+				log_line("  DP %d → %s se descongela." % [p, ch.data.display_name])
+			continue
+		if v < 0 or not da_left.has(v):
+			continue
+		da_left.erase(v)
+		var value := v
 		# Protector (3)/(5): los DA usados en protectores suben 1 o 2 (máx. 6).
 		if ch.data.has_class(Rules.ClassType.PROTECTOR):
 			var prot := board.synergy(Rules.ClassType.PROTECTOR)

@@ -4,12 +4,22 @@ extends RefCounted
 ## combates, eliminación y estertores. Las decisiones de compra y alineación
 ## las toma una IA simple (sustituible por la elección del jugador).
 
+enum State { IDLE, SHOPPING, LINEUP, COMBAT, ROUND_END, OVER }
+
 var adalids: Array[Adalid] = []
 var deck: Deck
 var round_no: int = 0
 var rng := RandomNumberGenerator.new()
 var log: PackedStringArray = []
 var last_combats: Array[Combat] = []
+
+# --- Jugador humano (opcional) y estado paso a paso ---
+var human: Adalid = null
+var state: State = State.IDLE
+var shop: Array[ChampionData] = [] # Tienda abierta para el humano.
+var human_lineup: Array[Champion] = []
+var current_combat: Combat = null # Combate en curso con el humano en el lado 0.
+var _pairs_queue: Array[Array] = []
 
 
 func _init(names: PackedStringArray, seed_value: int = 0) -> void:
@@ -18,6 +28,10 @@ func _init(names: PackedStringArray, seed_value: int = 0) -> void:
 	for n in names:
 		adalids.append(Adalid.new(n))
 	deck = Deck.new(rng)
+
+
+func set_human(index: int) -> void:
+	human = adalids[index]
 
 
 func alive_adalids() -> Array[Adalid]:
@@ -37,11 +51,26 @@ func winner() -> Adalid:
 	return alive[0] if alive.size() == 1 else null
 
 
-# ---------------------------------------------------------------- ronda
+func human_in_play() -> bool:
+	return human != null and not human.is_eliminated()
 
-## Juega una ronda completa. Devuelve false si la partida ya terminó.
+
+# ---------------------------------------------------------------- ronda (IA)
+
+## Juega una ronda completa sin jugador humano. Devuelve false si la partida terminó.
 func play_round() -> bool:
+	if not begin_round():
+		return false
+	advance()
+	return true
+
+
+# ---------------------------------------------------------------- ronda paso a paso
+
+## Cobra y prepara a todos. Si hay humano en juego, abre su tienda y espera.
+func begin_round() -> bool:
 	if is_over():
+		state = State.OVER
 		return false
 	round_no += 1
 	log.clear()
@@ -50,31 +79,138 @@ func play_round() -> bool:
 	for a in alive_adalids():
 		if a.ghost:
 			continue # Fantasma: sin fases de preparación.
-		prepare(a)
-	var pairs := matchmaking()
-	for pair in pairs:
+		if a == human:
+			var income := Economy.apply_round_income(a)
+			log.append("%s cobra %d de Éter (tiene %d)." % [a.display_name, income, a.eter])
+			shop = deck.draw(shop_size_for(a))
+		else:
+			prepare(a)
+	if human_in_play() and not human.ghost:
+		state = State.SHOPPING
+	else:
+		_pairs_queue = matchmaking()
+		state = State.COMBAT
+		advance()
+	return true
+
+
+## Avanza todo lo que no necesite al humano. Devuelve el estado en que se queda.
+func advance() -> State:
+	if state == State.SHOPPING or state == State.LINEUP:
+		return state
+	if current_combat != null and current_combat.is_finished():
+		current_combat.finish()
+		var opponent: Adalid = current_combat.sides[1].owner
+		_after_fight(human, opponent, current_combat)
+		current_combat = null
+	while not _pairs_queue.is_empty():
+		var pair: Array = _pairs_queue.pop_front()
 		if pair.size() == 1:
 			log.append("%s queda sin rival esta ronda." % pair[0].display_name)
 			continue
+		if human_in_play() and pair.has(human):
+			var opponent: Adalid = pair[1] if pair[0] == human else pair[0]
+			var board_h := Roster.build_board(human, human_lineup)
+			var board_o := Roster.build_board(opponent, Roster.auto_pick(opponent))
+			current_combat = Combat.new(board_h, board_o, rng)
+			current_combat.start()
+			current_combat.begin_round()
+			state = State.COMBAT
+			return state
 		_fight(pair[0], pair[1])
+	_end_round()
+	return state
+
+
+func _end_round() -> void:
 	for a in adalids:
 		log.append(a.summary())
-	if is_over() and winner() != null:
-		log.append("¡%s es el nuevo demiurgo!" % winner().display_name)
+	if is_over():
+		state = State.OVER
+		if winner() != null:
+			log.append("¡%s es el nuevo demiurgo!" % winner().display_name)
+	else:
+		state = State.ROUND_END
+
+
+# ---------------------------------------------------------------- acciones del humano
+
+func human_buy(card: ChampionData) -> bool:
+	if state != State.SHOPPING or not shop.has(card) or not human.buy(card):
+		return false
+	shop.erase(card)
+	log.append("  %s compra %s." % [human.display_name, card.display_name])
 	return true
+
+
+func human_sell(ch: Champion) -> int:
+	if state != State.SHOPPING or not human.reserve.has(ch):
+		return 0
+	var value := human.sell(ch)
+	log.append("  %s vende %s por %d." % [human.display_name, ch.data.display_name, value])
+	return value
+
+
+func human_level_up() -> bool:
+	if state != State.SHOPPING or not human.level_up():
+		return false
+	log.append("  %s sube a nivel %d." % [human.display_name, human.level])
+	return true
+
+
+func human_pay_ransom() -> bool:
+	if state != State.SHOPPING or human.kidnapped == null or not human.pay(Rules.RANSOM_COST):
+		return false
+	log.append("  %s rescata a %s." % [human.display_name, human.kidnapped.data.display_name])
+	human.kidnapped = null
+	return true
+
+
+func finish_shopping() -> void:
+	if state != State.SHOPPING:
+		return
+	deck.put_back(shop)
+	shop.clear()
+	state = State.LINEUP
+
+
+## Fija la alineación del humano. Devuelve los errores; si no hay, continúa la ronda.
+func set_lineup(chosen: Array[Champion]) -> PackedStringArray:
+	if state != State.LINEUP:
+		return ["No es el momento de alinear."]
+	var errors := Roster.validate(human, chosen)
+	if not errors.is_empty():
+		return errors
+	human_lineup = chosen.duplicate()
+	_pairs_queue = matchmaking()
+	state = State.COMBAT
+	advance()
+	return errors
+
+
+## Resuelve el asalto en curso con las parejas [dp, da] del humano.
+func commit_human_pairs(pairs: Array) -> void:
+	if state != State.COMBAT or current_combat == null:
+		return
+	current_combat.commit_round([pairs, current_combat.auto_pairs(1)])
+	if not current_combat.begin_round():
+		advance()
+
+
+func shop_size_for(a: Adalid) -> int:
+	# Demonio (5): la tienda tiene una carta más.
+	return Rules.SHOP_SIZE + (1 if Synergy.tier(a.reserve, Rules.ClassType.MAL) >= 5 else 0)
 
 
 ## Fase de preparación de un adalid: cobrar, tienda, subir de nivel.
 func prepare(a: Adalid) -> void:
 	var income := Economy.apply_round_income(a)
 	log.append("%s cobra %d de Éter (tiene %d)." % [a.display_name, income, a.eter])
-	# Demonio (5): la tienda tiene una carta más.
-	var shop_size := Rules.SHOP_SIZE + (1 if Synergy.tier(a.reserve, Rules.ClassType.MAL) >= 5 else 0)
-	var shop := deck.draw(shop_size)
-	var bought := ai_shop(a, shop)
+	var offer := deck.draw(shop_size_for(a))
+	var bought := ai_shop(a, offer)
 	for card in bought:
-		shop.erase(card)
-	deck.put_back(shop)
+		offer.erase(card)
+	deck.put_back(offer)
 	if not bought.is_empty():
 		var names: PackedStringArray = []
 		for card in bought:
@@ -150,7 +286,13 @@ func _fight(a: Adalid, b: Adalid) -> void:
 	var board_a := Roster.build_board(a, Roster.auto_pick(a))
 	var board_b := Roster.build_board(b, Roster.auto_pick(b))
 	var combat := Combat.new(board_a, board_b, rng)
-	var result := combat.run()
+	combat.run()
+	_after_fight(a, b, combat)
+
+
+## Tras un combate resuelto: registro, aniquilados y eliminaciones.
+func _after_fight(a: Adalid, b: Adalid, combat: Combat) -> void:
+	var result := combat.result
 	last_combats.append(combat)
 	log.append_array(combat.log)
 	_purge_annihilated(a)
