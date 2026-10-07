@@ -1,7 +1,14 @@
-# adalides
-Spring and react latform to play with friends
+# Adalides
 
-# **Adalides**
+Adaptación digital del juego de mesa **Adalides**, hecha con [Godot 4.7](https://godotengine.org/) y GDScript.
+
+- El proyecto de Godot está en la carpeta `adalides/` (ábrela desde el gestor de proyectos o con `godot -e --path adalides`).
+- Las reglas del juego están a continuación en este mismo archivo.
+- Si trabajas con un agente de IA, lee `AGENTS.md`.
+
+---
+
+## Reglas del juego
 
 Bienvenido a adalides , el juego de mesa en el que has sido escogido como aspirante para reemplazar al demiurgo, en esta guía podrás encontrar todas las reglas concernientes a este juego.
 
