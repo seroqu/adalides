@@ -1,100 +1,153 @@
 class_name Champion
 extends RefCounted
-## Un campeón de la reserva de un adalid: carta + copias + estado de combate.
+## Un campeón del cuartel: carta + copias (duplicado / AFI) + estado de batalla.
 
 var data: ChampionData
-var duplicates: int = 0 # Copias adicionales (README: "Duplicar cartas").
-var charges: int = 0 # Contadores de carga eléctrica (+1/+1 cada uno).
-var annihilated: bool = false # Volvió a la baraja del demiurgo.
+var copies: int = 1 # 1..4. 2 = duplicado (+1/+1), 3 = AFI 1, 4 = AFI 2.
 
-# --- Estado que se reinicia en cada combate ---
-var defense_left: int
-var frozen: bool = false
-var frozen_turns: int = 0 # >0: se descongela solo al pasar los turnos.
+# --- Estado de batalla (se reinicia con reset_for_battle) ---
+var hp: int
+var max_hp_bonus: int = 0
+var attack_bonus: int = 0 # Permanente durante la batalla (Garras ígneas, Energizar, Marchitar...).
+var frozen: int = 0 # Contadores de hielo; en la fase de movimiento se gasta uno y no actúa.
 var stealth: bool = false
-var permanent_stealth: bool = false
+var cursed: bool = false
+var buried: bool = false
 var alive: bool = true
-var doubled: bool = false # Mago de plasma 1-2: duplica su daño.
-var extra_attack: int = 0 # Bonos de sinergia fijados al empezar el combate.
-var extra_defense: int = 0
-var dodging: bool = false
-var blocked_by: Champion = null
+var died_this_round: bool = false
 var killer: Champion = null
+var side: int = -1
+
+# --- Estado de un asalto ---
+var die: int = -1 # Rules.Die asignado este asalto (-1: sin dado → ataque normal).
+var acted: bool = false
+var next_attack_bonus: int = 0
+var dodge_basic: bool = false # Viento arrebatado.
+var dodge_powers: bool = false # Camuflaje.
+var immune: bool = false # Congelación profunda.
+var can_move_and_attack: bool = false # Agilidad trémula.
+var retribution: int = 0 # Aura de retribución: alcance.
+var peace: int = 0 # Aura de paz: alcance.
+var incoming_bonus: int = 0 # Enemigo a la vista.
+var target: Champion = null
 
 
-func _init(p_data: ChampionData, p_duplicates := 0) -> void:
+func _init(p_data: ChampionData, p_copies := 1) -> void:
 	data = p_data
-	duplicates = p_duplicates
-	reset_for_combat()
+	copies = p_copies
+	reset_for_battle()
 
 
-func reset_for_combat() -> void:
-	frozen = false
-	frozen_turns = 0
-	stealth = false
-	permanent_stealth = false
-	alive = not annihilated
-	doubled = false
-	extra_attack = 0
-	extra_defense = 0
-	killer = null
-	reset_round_flags()
-	defense_left = max_defense()
+func afi() -> int:
+	return Rules.AFI_BY_COPIES.get(mini(copies, Rules.MAX_COPIES), 0)
 
 
-func bonus() -> int:
-	return duplicates * Rules.DUPLICATE_BONUS.get(data.tier, 0)
+func duplicated() -> bool:
+	return copies >= 2
+
+
+## Índice (0..3) para leer los valores (1 copia / 2 copias / AFI 1 / AFI 2) de un poder.
+func power_level() -> int:
+	return clampi(copies - 1, 0, 3)
+
+
+func power_value(default := 0) -> int:
+	var values: Array = data.power.get("values", [])
+	if values.is_empty():
+		return default
+	return values[mini(power_level(), values.size() - 1)]
+
+
+func base_attack() -> int:
+	return data.attack + (Rules.DUPLICATE_BONUS if duplicated() else 0) + afi()
+
+
+func base_defense() -> int:
+	return data.defense + (Rules.DUPLICATE_BONUS if duplicated() else 0) + afi()
 
 
 func attack() -> int:
-	var atk := data.attack + bonus() + charges + extra_attack
-	if stealth and data.has_class(Rules.ClassType.ASESINO):
-		atk *= 2 # Los asesinos hacen el doble de daño al salir de sigilo.
-	if doubled:
-		atk *= 2
-	return atk
+	return maxi(base_attack() + attack_bonus + next_attack_bonus, 0)
 
 
-func max_defense() -> int:
-	return data.defense + bonus() + charges + extra_defense
+func max_hp() -> int:
+	return base_defense() + max_hp_bonus
+
+
+func reset_for_battle() -> void:
+	max_hp_bonus = 0
+	attack_bonus = 0
+	frozen = 0
+	stealth = false
+	cursed = false
+	buried = false
+	alive = true
+	killer = null
+	hp = max_hp()
+	reset_for_round()
+
+
+func reset_for_round() -> void:
+	die = -1
+	acted = false
+	died_this_round = false
+	next_attack_bonus = 0
+	dodge_basic = false
+	dodge_powers = false
+	immune = false
+	can_move_and_attack = false
+	retribution = 0
+	peace = 0
+	incoming_bonus = 0
+	target = null
 
 
 func take_damage(amount: int, source: Champion = null) -> int:
-	if amount <= 0 or not alive:
+	if amount <= 0 or not alive or immune:
 		return 0
-	var dealt: int = mini(amount, defense_left)
-	defense_left -= dealt
-	if defense_left <= 0:
+	var dealt: int = mini(amount, hp)
+	hp -= dealt
+	if hp <= 0:
 		alive = false
+		died_this_round = true
 		killer = source
 	return dealt
 
 
-func heal(amount: int) -> void:
-	if annihilated:
-		return
-	defense_left = mini(defense_left + amount, max_defense())
-	if defense_left > 0:
-		alive = true
+func heal(amount: int) -> int:
+	if not alive or amount <= 0:
+		return 0
+	var before := hp
+	hp = mini(hp + amount, max_hp())
+	return hp - before
+
+
+func revive(with_hp: int) -> void:
+	alive = true
+	buried = false
+	hp = clampi(with_hp, 1, max_hp())
 
 
 func can_act() -> bool:
-	return alive and not frozen
+	return alive and frozen == 0 and not buried
 
 
-func reset_round_flags() -> void:
-	dodging = false
-	blocked_by = null
+func is_targetable() -> bool:
+	return alive and not stealth and not buried
 
 
 func label() -> String:
 	var tags: PackedStringArray = []
-	if frozen:
+	if frozen > 0:
 		tags.append("congelado")
 	if stealth:
 		tags.append("sigilo")
+	if cursed:
+		tags.append("maldito")
+	if buried:
+		tags.append("sepultado")
 	if not alive:
 		tags.append("muerto")
 	var suffix := "" if tags.is_empty() else " (" + ", ".join(tags) + ")"
-	var copies := "" if duplicates == 0 else " x%d" % (duplicates + 1)
-	return "%s%s %d/%d%s" % [data.display_name, copies, defense_left, max_defense(), suffix]
+	var cp := "" if copies == 1 else " x%d" % copies
+	return "%s%s %d/%d%s" % [data.display_name, cp, hp, max_hp(), suffix]

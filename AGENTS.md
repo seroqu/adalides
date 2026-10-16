@@ -4,131 +4,117 @@ Guía para agentes de IA y colaboradores que trabajen en este repositorio.
 
 ## Qué es Adalides
 
-Adalides es un juego de mesa de estrategia por combates en el que cada jugador
-("adalid") construye un ejército de campeones con Éter y lucha por ser el
-sucesor del demiurgo. Este repositorio contiene la adaptación digital del juego,
-hecha con **Godot 4.7** y **GDScript**.
+**Adalides del demiurgo** es un juego de mesa de autobatallas: cada jugador ("adalid") arma un ejército de campeones
+(arquetipo × elemento) con Éter y lo enfrenta al de los demás en batallas automáticas de 4 asaltos. Este repositorio
+es su adaptación digital con **Godot 4.7** y **GDScript**.
 
-Las reglas completas del juego están en `README.md`. Son la fuente de verdad del
-diseño: antes de implementar una mecánica, léelas y respétalas. Si una regla es
-ambigua, pregunta en lugar de inventar.
+Las reglas vigentes están en `README.md`, que ordena el documento de diseño del autor
+(`adalides/adalides_doc/Adalides del demiurgo 2 columnas.pdf`, los tableros `Matt batalla azul.png` y
+`Matt magenta.png`, y `recuento adalides.png`). Son la fuente de verdad: antes de implementar una mecánica léelas.
+Si una regla es ambigua, **pregunta al autor** en lugar de inventar; él lo pidió explícitamente. La versión anterior
+del juego (README v1: sinergias 3/5/7, DA+DP, estertores) quedó obsoleta el 2026-10-16 y solo vive en el historial.
 
 ## Estructura
 
 ```
 .
-├── README.md        Reglas del juego (diseño)
+├── README.md        Reglas del juego v2 (diseño)
 ├── AGENTS.md        Este archivo
-├── .gitignore
 └── adalides/        Proyecto de Godot (abrir esta carpeta con el editor)
     ├── project.godot
-    ├── scenes/
-    │   └── main.tscn            Pantalla de partida (la UI se construye en código en scripts/ui/main.gd)
+    ├── adalides_doc/            Documentos del autor (PDF y tableros)
+    ├── scenes/main.tscn         Pantalla de partida (la UI se construye en código)
     ├── scripts/
     │   ├── core/                Reglas puras, sin nodos (se prueban en headless)
-    │   │   ├── rules.gd         Constantes, enums y supuestos (Rules)
-    │   │   ├── dice.gd          Tiradas d6: pifia / fallo / acierto / crítico (Dice)
-    │   │   ├── champion_data.gd Carta de campeón: clases, nivel, coste, tabla de acciones (ChampionData)
-    │   │   ├── champion.gd      Campeón en juego: vida, congelado, sigilo, duplicados (Champion)
-    │   │   ├── adalid.gd        Jugador: vitalidad, Éter, racha, nivel, reserva (Adalid)
-    │   │   ├── economy.gd       Ingresos, interés, racha, premio y castigo (Economy)
-    │   │   ├── synergy.gd       Conteo por clase y niveles 3/5/7 (Synergy)
-    │   │   ├── battlefield.gd   Mapa de 6 posiciones, adyacencias, fuerza (Battlefield)
-    │   │   ├── combat.gd        Simulador de combate por asaltos con IA simple (Combat)
-    │   │   ├── abilities.gd     Habilidades SPEC y pasivas de cartas concretas (Abilities)
-    │   │   ├── deck.gd          Baraja del demiurgo: copias, barajar, robar (Deck)
-    │   │   ├── roster.gd        Requisitos de alineación y la IA que elige el mapa (Roster)
-    │   │   ├── death_rattle.gd  Los 12 estertores (DeathRattle)
-    │   │   └── game.gd          Partida completa: preparación, 2D10, combates, eliminación (Game)
-    │   ├── data/
-    │   │   └── catalog.gd       Catálogo de cartas (Catalog)
-    │   └── ui/
-    │       └── main.gd          Partida jugable: tienda, alineación, combate (tú contra 5 IA)
+    │   │   ├── rules.gd         Constantes, enums, pistas del tablero, supuestos (Rules)
+    │   │   ├── dice.gd          d6 (--/-/+/++) y d20 (Dice)
+    │   │   ├── champion_data.gd Carta: arquetipo, elemento, coste, ataque, vida, poder (ChampionData)
+    │   │   ├── champion.gd      Campeón del cuartel: copias/AFI y estado de batalla (Champion)
+    │   │   ├── adalid.gd        Tablero personal: vida, Éter, racha, pistas, cuartel (Adalid)
+    │   │   ├── board.gd         Cuadrícula 6×5 (dos tableros 3×5 enfrentados), distancias (Board)
+    │   │   ├── tiers.gd         Tiers elementales 3/6/9 y de arquetipo 2/4/6 (Tiers)
+    │   │   ├── battle.gd        Batalla: fases HI/M/HR/A/H/HF, movimiento y objetivo automáticos,
+    │   │   │                    ataques, pasivas de tier, fin y pérdida de vida (Battle)
+    │   │   ├── powers.gd        Poderes de personaje; IMPLEMENTED lista los que ya hacen algo (Powers)
+    │   │   ├── deck.gd          Mazo del demiurgo (Deck)
+    │   │   ├── schedule.gd      Tabla de batallas (4 y 6 jugadores; round-robin para otros) (Schedule)
+    │   │   └── game.gd          Partida: draft → mercado → alineación → batallas, IA y humano (Game)
+    │   ├── data/catalog.gd      50 campeones base + 5 héroes con stats, precios y poderes (Catalog)
+    │   └── ui/main.gd           Partida jugable: tú contra 5 IA
     └── tests/
         ├── test_rules.gd        Pruebas de reglas (SceneTree, sin editor)
-        ├── demo_combat.gd       Imprime un combate de ejemplo
         └── demo_game.gd         Imprime una partida completa de 6 adalides
 ```
 
-Pendiente de crear: `resources/` (cartas como `.tres` cuando el catálogo se estabilice), `assets/` (arte, audio) y `autoload/`.
-
 ## Supuestos de implementación
 
-Las reglas del README no cubren todo. Lo que se decidió para poder jugar está
-marcado con `SUPUESTO` en `scripts/core/rules.gd` y en los comentarios del código:
+Lo que el PDF no fija. Las **decisiones del autor** se tomaron en conversación el 2026-10-16; el resto son
+supuestos marcados `SUPUESTO` en el código y candidatos a preguntar.
 
-- Vitalidad inicial del adalid: 20.
-- Dados: todos son d6. Pifia = 1, acierto = 4–6, crítico = 6 (también cuenta como acierto).
-- Cada adalid forma 3 parejas DA+DP por asalto (Mago (3) da +1, Mago (5) otro +1).
-- El mapa tiene 6 posiciones. Los dos mapas se enfrentan como filas: la posición `i`
-  es adyacente a las enemigas `i-1`, `i`, `i+1` y a las propias `i-1`, `i+1`.
-  El "espacio contrario" del Emboscador es la posición enemiga con el mismo número.
-- Las acciones defensivas (BLOCK, ESQ) se aplican antes de resolver el daño del
-  mismo asalto, aunque el orden escrito ponga ofensivas antes que defensivas:
-  en la mesa todo se revela a la vez.
-- PRO sin cantidad produce 1 de Éter; CUR sin valor cura 1.
-- "3 interés" se interpreta como +3 de Éter por ronda si se tiene Éter ahorrado.
-- Preparación: la tienda muestra 4 cartas (5 con Demonio (5)); subir de nivel cuesta
-  10 de Éter; vender devuelve la mitad del coste (mínimo 1). La baraja tiene 14 copias
-  de cada común, 4 de cada elemental y 1 de cada héroe/legendario (199 cartas).
-- Si al morir un adalid hay empate de clase dominante, el estertor se elige al azar.
-- Los campeones que mueren en combate vuelven a la reserva; solo los ANIQUILADOS
-  se pierden (y regresan a la baraja).
-- Las 12 cartas comunes del catálogo son relleno (`placeholder = true`); las 200
-  cartas reales no están documentadas.
-- Sinergias implementadas (en `combat.gd`): todas las de las 12 clases en sus
-  niveles 3/5/7, con simplificaciones marcadas como SUPUESTO (p. ej. Eléctrico (5)/(7)
-  solo lanza más DA de carga; Aire (7) contraataca con una sola tirada).
-- Habilidades de carta implementadas (en `abilities.gd`): Plasma, Lava, Glacial,
-  Tormenta, Señores del aire (6), Demonio eléctrico, Demonio de arena, Mago de plasma,
-  Mago de tormenta (4-6), Gigantes, Androides, Cazador del viento, Arcángel, Señor demonio.
-  Pendientes: Señores del aire (3) mover enemigo, Mago de tormenta (2-3) desviar daño.
-- Fantasma (estertor de Mal) solo marca al adalid; aún no combate sin preparación.
+Decisiones del autor:
+- Vida inicial 30. Éter inicial 30. Por ciclo: 10 + interés (3 por cada 10 ahorrados) + bono de racha.
+- La racha cuenta victorias **o** derrotas seguidas; es la fila 0/5/10/15/20/25/30 del tablero personal.
+- "Roll 2" = refrescar el mercado cuesta 2.
+- Mejoras: tres pistas (cuartel, campeones en batalla, dados); cada mejora cuesta 5 + 5 por mejora previa en la pista.
+- Movimiento 1 paso por asalto; alcance 1 salvo Arquero 3 y Mago 2.
+- Los tiers se cuentan con los campeones en batalla.
+- La marca "inactiva" del tablero físico no se implementa.
+
+Supuestos del código:
+- El bono de racha es el número de la casilla (5, 10, …, 30 de Éter). Probablemente excesivo: preguntar.
+- Las filas 1 de los dos tableros se tocan; la cuadrícula 6×5 es transitable por ambos bandos.
+- Mercado de 4 cartas; el draft lo empieza quien tiene menos vida; vender devuelve la mitad del coste.
+- Mazo: 4 copias de cada carta base y 1 de cada héroe. Los héroes no tienen elemento.
+- Los d20 de Tifón/Herejía/Magia desatada señalan casillas 1..15 (16–20 nada). Tormenta, Cosecha oscura,
+  Tormenta de flechas y Curación relámpago usan d6: (valor − 1) mod 5 = columna, (valor − 1) mod 3 + 1 = fila.
+- Las acciones defensivas de un asalto se marcan en HI y afectan a los ataques del mismo asalto.
+- "Batallas realizadas" para la pérdida de vida = número del ciclo (cada adalid pelea una vez por ciclo).
+- Un adalid eliminado deja a su rival de la tabla sin batalla; los sueltos se emparejan entre sí.
+- Hechizos y quintaesencias no están implementados (el PDF no dice cómo se compran).
+- Poderes sin implementar (solo se registran, la IA no les asigna dados): Aura estoica, Abjuración herética,
+  Hedor profano, Disparos de viento, Distancia, Escudo reflectivo, Agarre de kraken, Tengo un jarrón, Aire vital,
+  Tierra maldita, Golpe rebotante, Golpe fantasma, Excavadora, Saltos continuos, Aura de puntería divina,
+  Atracción letal, Matriz de protección. Tiers sin implementar: Pacto demoníaco, Frenesí canino, Ejército de la
+  tumba, Amplificación arcana.
 
 ## Cómo fluye una partida con jugador humano
 
-`Game` es una máquina de estados (`Game.State`): `begin_round()` cobra, prepara a
-las IA y abre la tienda del humano (`SHOPPING`); `finish_shopping()` pasa a `LINEUP`;
-`set_lineup(cartas)` valida con `Roster.validate` y, si es válida, hace el
-emparejamiento y resuelve los combates de la IA hasta llegar al del humano
-(`COMBAT`). En combate, `Combat` también va por pasos: `begin_round()` lanza los
-dados de ambos y `commit_human_pairs([[dp, da], ...])` resuelve el asalto. Cuando
-no queda nada que decidir, `advance()` termina la ronda (`ROUND_END` u `OVER`).
-Sin humano (`human == null`), `play_round()` hace todo con la IA: así corren las pruebas.
+`Game` es una máquina de estados (`Game.State`): `begin_cycle()` reparte el draft y ejecuta los picks de la IA hasta
+que toca al humano (`DRAFT`, `human_draft_pick`); al acabar cobra y abre el mercado (`MARKET`: `human_buy`,
+`human_refresh_market`, `human_sell`, `human_upgrade`, `finish_market`); `set_lineup({Vector2i(col, fila): Champion})`
+valida y lanza las batallas de la tabla hasta la del humano (`BATTLE`). En batalla, `Battle.begin_round()` lanza los
+dados y `commit_human_dice({Champion: Rules.Die})` resuelve el asalto. `advance()` termina el ciclo
+(`CYCLE_END` u `OVER`). Sin humano, `play_cycle()` lo hace todo con la IA: así corren las pruebas.
 
-Las decisiones que aún toma la IA por el humano: a quién atacar (el enemigo con
-menos vida al alcance), hacia dónde mover y a quién bloquear o curar.
+Lo que sigue decidiendo el motor por el humano: movimiento y objetivo de cada campeón (reglas de prioridad del PDF),
+a quién afecta cada poder (el objetivo del campeón o el aliado más conveniente).
 
 ## Convenciones
 
-- Lenguaje: GDScript con tipado estático (`var vida: int = 20`, `func atacar() -> void`).
-- Nombres: `snake_case` para archivos, funciones y variables; `PascalCase` para
-  clases y nodos; `SCREAMING_SNAKE_CASE` para constantes.
+- Lenguaje: GDScript con tipado estático (`var vida: int = 20`, `func atacar() -> void`). Las advertencias de
+  inferencia desde Variant se tratan como error: anota el tipo al sacar elementos de arrays sin tipo.
+- Nombres: `snake_case` para archivos, funciones y variables; `PascalCase` para clases y nodos;
+  `SCREAMING_SNAKE_CASE` para constantes.
 - Idioma: identificadores en inglés, textos visibles para el jugador y comentarios en español.
-- Un script por escena, señales para comunicar hijos → padres, llamadas directas para padres → hijos.
-- La lógica de reglas (daño, dados, Éter, rachas) va en scripts puros sin dependencia de nodos,
-  para que se pueda probar sin abrir el editor.
-- No editar `.tscn`/`.tres` a mano salvo cambios triviales; el editor reescribe el formato.
+- La lógica de reglas va en scripts puros sin nodos, para probarla sin abrir el editor.
+- `Rules.Reach`/`Range`: no uses `Range` ni `range` como nombres; chocan con Godot.
 
 ## Flujo de trabajo
 
-- Tras crear scripts nuevos con `class_name`, regenerar la caché de clases:
-  `godot --headless --path adalides --import`
-- Ejecutar las pruebas de reglas (deben quedar en 0 fallos):
-  `godot --headless --path adalides -s tests/test_rules.gd`
-- Ver un combate de ejemplo: `godot --headless --path adalides -s tests/demo_combat.gd -- 2026`
-- Ver una partida completa: `godot --headless --path adalides -s tests/demo_game.gd -- 2026`
-- Verificar que la escena principal carga: `godot --headless --path adalides --quit-after 5`
-- Capturar la interfaz en cada fase (abre una ventana real unos segundos):
-  `godot --path adalides --resolution 1400x900 -- --screenshots /ruta/de/salida`
-- Abrir el editor: `godot -e --path adalides`
+- Tras crear scripts nuevos con `class_name`: `godot --headless --path adalides --import`
+- Pruebas (deben quedar en 0 fallos): `godot --headless --path adalides -s tests/test_rules.gd`
+- Partida completa de ejemplo: `godot --headless --path adalides -s tests/demo_game.gd -- 2026`
+- Escena principal: `godot --headless --path adalides --quit-after 5`
+- Capturas de cada fase (abre una ventana real unos segundos):
+  `godot --path adalides --resolution 1500x950 -- --screenshots /ruta/de/salida`
+- Editor: `godot -e --path adalides`
 - Rama principal: `master`. Commits en español, en presente ("Agrega la escena de combate").
 - No subir `adalides/.godot/` ni exportaciones; ya están en `.gitignore`.
 
 ## Glosario rápido
 
-- **Éter**: recurso para comprar campeones. Se empieza con 20.
-- **DA / DP**: dado de acción / dado de posición. Se emparejan en secreto cada asalto.
-- **Asalto**: ronda de combate. Un combate dura máximo 4 asaltos.
-- **Sinergia**: bonificación por tener 3, 5 o 7 campeones de una clase.
-- **Comunes / Elementales / Héroes**: niveles de campeón; duplicarlos da +1/+1, +3/+3 y +5/+5.
+- **Éter**: recurso para comprar y mejorar. **Vida**: 30; se pierde al perder batallas.
+- **Ciclo**: draft + mercado + alineación + una batalla por adalid. **Asalto**: una de las 4 rondas de una batalla.
+- **Cuartel**: todas las cartas del adalid. **Copias**: 2.ª = duplicado (+1/+1), 3.ª/4.ª = AFI 1/2.
+- **Tier**: habilidad de elemento (3/6/9 campeones) o de arquetipo (2/4/6) en la batalla.
+- **PA / PP**: poder activo (sustituye el ataque) / pasivo (se suma al ataque). Ambos necesitan un dado.

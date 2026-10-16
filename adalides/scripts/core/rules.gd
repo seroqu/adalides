@@ -1,110 +1,103 @@
 class_name Rules
 extends RefCounted
-## Constantes y enumeraciones del juego. Fuente: README.md (Reglas del juego).
-## Los valores marcados con "SUPUESTO" no están en las reglas y se eligieron
-## para poder jugar; ajustarlos aquí cambia todo el juego.
+## Constantes y enumeraciones de "Adalides del demiurgo" (v2).
+## Fuente: adalides_doc/Adalides del demiurgo 2 columnas.pdf y los tableros.
+## Lo marcado SUPUESTO no está en el PDF: lo fijó el autor en conversación
+## (ver AGENTS.md) o se eligió para poder jugar.
 
-# --- Economía de Éter (README: "Economía de Éter") ---
-const STARTING_ETER := 20
-const WIN_REWARD := 7
-const STREAK_BONUS := 2
+# --- Adalid (tablero personal) ---
+const STARTING_LIFE := 30
+const STARTING_ETER := 30
+const CYCLE_INCOME := 10
+const INTEREST_PER := 10 # 3 de Éter por cada 10 ahorrados.
 const INTEREST := 3
-const ROUND_INCOME := 10
+const MARKET_REFRESH_COST := 2 # "Roll 2"
+const MARKET_SIZE := 4 # SUPUESTO
+## Bono por racha (victorias o derrotas seguidas): fila 0/5/10/15/20/25/30.
+## SUPUESTO: la casilla indica el Éter que da la racha.
+const STREAK_TRACK: Array[int] = [0, 5, 10, 15, 20, 25, 30]
+const UPGRADE_BASE_COST := 5 # Cada mejora: 5 + 5 por mejora previa en esa pista.
 
-# --- Adalid ---
-const STARTING_VITALITY := 20 # SUPUESTO: las reglas no fijan la vitalidad inicial.
-const TIE_VITALITY_LOSS := 2
-const MAX_LEVEL := 3
+## Pistas del tablero personal. "H" = desbloquea un hueco de héroe.
+const CUARTEL_TRACK: Array = [8, 11, 14, "H", 17, 20, "H"]
+const BATTLE_TRACK: Array[int] = [3, 4, 5, 6, 7, 8, 9]
+const DICE_TRACK: Array[int] = [1, 2, 3, 4, 5, 6]
 
-# --- Preparación ---
-const SHOP_SIZE := 4 # SUPUESTO: la tienda muestra 4 cartas (Demonio (5): 5).
-const LEVEL_UP_COST := 10 # SUPUESTO: subir de nivel cuesta 10 de Éter.
-const SELL_DIVISOR := 2 # SUPUESTO: vender devuelve la mitad del coste (mín. 1).
-const RANSOM_COST := 30 # Secuestro: rescate de la carta.
-const MAX_ELEMENTALS_BY_LEVEL := { 1: 0, 2: 1, 3: 2 }
-## Copias de cada carta en el mazo del demiurgo (≈200 cartas en total).
-const DECK_COPIES := {
-	Tier.COMUN: 14,
-	Tier.ELEMENTAL: 4,
-	Tier.HEROE: 1,
-	Tier.LEGENDARIO: 1,
-}
+# --- Draft (inicio de cada ciclo) ---
+const DRAFT_CARDS_PER_PLAYER := 3 # Se muestran 3 × jugadores.
+const DRAFT_PICKS := 2 # Cada uno toma 2, en orden de serpiente.
 
-# --- Combate ---
-const MAX_ROUNDS := 4 # Un combate dura máximo 4 asaltos.
-const BOARD_SIZE := 6 # SUPUESTO: 6 posiciones por mapa (6 hexágonos por color).
-const BASE_ACTION_DICE := 3 # SUPUESTO: parejas DA+DP base por asalto.
+# --- Batalla ---
+const ROUNDS_PER_BATTLE := 4
+const BOARD_ROWS := 3 # Fila 1 = frente (SUPUESTO: las filas 1 se enfrentan).
+const BOARD_COLS := 5
+const SPELL_SLOTS := 2
+const BASE_MOVE := 1 # SUPUESTO (autor): 1 paso por asalto.
+const HERO_COST := 10
 
-# --- Dados (d6) ---
+# --- Copias de una carta ---
+const DUPLICATE_BONUS := 1 # 2.ª copia: +1/+1 y mejora de habilidad.
+const AFI_BY_COPIES := { 1: 0, 2: 0, 3: 1, 4: 2 } # 3.ª copia AFI 1, 4.ª AFI 2.
+const MAX_COPIES := 4
+
+# --- Dados ---
 const DICE_SIDES := 6
-const PIFIA := 1
-const ACIERTO_MIN := 4 # SUPUESTO: 4-6 es acierto.
-const CRITICO := 6 # El 6 es crítico (y también acierto).
+enum Die { PIFIA, FALLO, ACIERTO, CRITICO } # -- / - / + / ++
+const DIE_LABELS := { Die.PIFIA: "--", Die.FALLO: "-", Die.ACIERTO: "+", Die.CRITICO: "++" }
 
-# --- Sinergias ---
-const SYNERGY_TIERS: Array[int] = [3, 5, 7]
+enum Element { FUEGO, TRUENO, TIERRA, AIRE, HIELO }
+enum Archetype { ROBOT, SALVAJE, ANGEL, DEMONIO, MAGO, ARQUERO, DEFENSOR, ASESINO, PIRATA, MUERTO }
 
-# --- Fuerza de un campeón al contar supervivientes (README: "Fin del combate") ---
-const STRENGTH_BY_TIER := {
-	Tier.COMUN: 1,
-	Tier.ELEMENTAL: 2,
-	Tier.HEROE: 3,
-	Tier.LEGENDARIO: 3, # SUPUESTO: se cuenta como heroico.
+## Orden de un asalto (PDF: "El orden de asalto es").
+enum Phase { HI, M, HR, A, H, HF }
+const PHASE_LABELS := {
+	Phase.HI: "Habilidad instantánea", Phase.M: "Movimiento", Phase.HR: "Habilidad rápida",
+	Phase.A: "Ataque", Phase.H: "Habilidad normal", Phase.HF: "Habilidad de fin de asalto",
 }
 
-# --- Bonificación por duplicar cartas (README: "Duplicar cartas") ---
-const DUPLICATE_BONUS := {
-	Tier.COMUN: 1,
-	Tier.ELEMENTAL: 3,
-	Tier.HEROE: 5,
-	Tier.LEGENDARIO: 0, # No se puede subir de nivel.
+## Tiers: elementales 3/6/9, arquetipos 2/4/6 (contando campeones en batalla).
+const ELEMENT_TIERS: Array[int] = [3, 6, 9]
+const ARCHETYPE_TIERS: Array[int] = [2, 4, 6]
+
+const ELEMENT_NAMES := {
+	Element.FUEGO: "Fuego", Element.TRUENO: "Trueno", Element.TIERRA: "Tierra",
+	Element.AIRE: "Aire", Element.HIELO: "Hielo",
 }
-
-enum ClassType { FUEGO, ELECTRICO, TIERRA, AIRE, HIELO, SALVAJE, ROBOT, MAL, BIEN, PROTECTOR, ASESINO, MAGO }
-enum Tier { COMUN, ELEMENTAL, HEROE, LEGENDARIO }
-enum Reach { CUERPO_A_CUERPO, EMBOSCADOR, RANGO }
-enum Keyword { ATK, MOV, CONG, PRO, SPEC, CUR, BLOCK, ESQ, ANIQUILA }
-## Orden de resolución de un asalto (README: "Asaltos").
-enum Phase { MOVIMIENTO, OFENSIVA, DEFENSIVA, ESPECIAL }
-
-const CLASS_NAMES := {
-	ClassType.FUEGO: "Fuego", ClassType.ELECTRICO: "Eléctrico", ClassType.TIERRA: "Tierra",
-	ClassType.AIRE: "Aire", ClassType.HIELO: "Hielo", ClassType.SALVAJE: "Salvaje",
-	ClassType.ROBOT: "Robot", ClassType.MAL: "Mal", ClassType.BIEN: "Bien",
-	ClassType.PROTECTOR: "Protector", ClassType.ASESINO: "Asesino", ClassType.MAGO: "Mago",
+const ARCHETYPE_NAMES := {
+	Archetype.ROBOT: "Robot", Archetype.SALVAJE: "Salvaje", Archetype.ANGEL: "Ángel",
+	Archetype.DEMONIO: "Demonio", Archetype.MAGO: "Mago", Archetype.ARQUERO: "Arquero",
+	Archetype.DEFENSOR: "Defensor", Archetype.ASESINO: "Asesino", Archetype.PIRATA: "Pirata",
+	Archetype.MUERTO: "Muerto",
 }
-
-const TIER_NAMES := {
-	Tier.COMUN: "Común", Tier.ELEMENTAL: "Elemental", Tier.HEROE: "Héroe", Tier.LEGENDARIO: "Legendario",
-}
-
-const KEYWORD_NAMES := {
-	Keyword.ATK: "ATK", Keyword.MOV: "MOV", Keyword.CONG: "CONG", Keyword.PRO: "PRO",
-	Keyword.SPEC: "SPEC", Keyword.CUR: "CUR", Keyword.BLOCK: "BLOCK", Keyword.ESQ: "ESQ",
-	Keyword.ANIQUILA: "ANIQUILA",
-}
-
-## Fase en la que se resuelve cada palabra clave.
-const KEYWORD_PHASE := {
-	Keyword.MOV: Phase.MOVIMIENTO,
-	Keyword.ATK: Phase.OFENSIVA,
-	Keyword.ANIQUILA: Phase.OFENSIVA,
-	Keyword.BLOCK: Phase.DEFENSIVA,
-	Keyword.ESQ: Phase.DEFENSIVA,
-	Keyword.CONG: Phase.ESPECIAL,
-	Keyword.PRO: Phase.ESPECIAL,
-	Keyword.SPEC: Phase.ESPECIAL,
-	Keyword.CUR: Phase.ESPECIAL,
-}
+## Alcance de ataque por arquetipo (autor): 1 salvo Arquero 3 y Mago 2.
+const REACH := { Archetype.ARQUERO: 3, Archetype.MAGO: 2 }
 
 
-static func class_label(c: int) -> String:
-	return CLASS_NAMES.get(c, "?")
+static func element_label(e: int) -> String:
+	return ELEMENT_NAMES.get(e, "?")
 
 
-static func keyword_label(k: int) -> String:
-	return KEYWORD_NAMES.get(k, "?")
+static func archetype_label(a: int) -> String:
+	return ARCHETYPE_NAMES.get(a, "?")
 
 
-static func tier_label(t: int) -> String:
-	return TIER_NAMES.get(t, "?")
+static func reach_of(a: int) -> int:
+	return REACH.get(a, 1)
+
+
+static func die_label(d: int) -> String:
+	return DIE_LABELS.get(d, "?")
+
+
+## Nivel de tier alcanzado (0 si ninguno) para una lista de umbrales.
+static func tier_index(count: int, thresholds: Array[int]) -> int:
+	var reached := 0
+	for i in thresholds.size():
+		if count >= thresholds[i]:
+			reached = i + 1
+	return reached
+
+
+## Coste de la siguiente mejora en una pista con `done` mejoras hechas.
+static func upgrade_cost(done: int) -> int:
+	return UPGRADE_BASE_COST * (done + 1)

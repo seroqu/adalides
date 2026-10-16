@@ -1,5 +1,5 @@
 extends SceneTree
-## Pruebas de las reglas. Ejecutar con:
+## Pruebas de las reglas v2. Ejecutar con:
 ##   godot --headless --path adalides -s tests/test_rules.gd
 
 var _failures := 0
@@ -8,17 +8,13 @@ var _passes := 0
 
 func _init() -> void:
 	test_dice()
-	test_economy()
-	test_synergy()
-	test_champion()
 	test_catalog()
-	test_combat_deterministic()
-	test_combat_wipe()
-	test_block_overflow()
-	test_reserve_and_shop()
-	test_deck()
-	test_roster()
-	test_death_rattle()
+	test_adalid_board()
+	test_cuartel()
+	test_board()
+	test_schedule()
+	test_battle_basics()
+	test_battle_deterministic()
 	test_full_game()
 	test_human_flow()
 	print("\n%d pruebas correctas, %d fallos" % [_passes, _failures])
@@ -35,252 +31,215 @@ func check(cond: bool, msg: String) -> void:
 
 
 func test_dice() -> void:
-	check(Dice.classify(1) == Dice.Result.PIFIA, "1 es pifia")
-	check(Dice.classify(3) == Dice.Result.FALLO, "3 es fallo")
-	check(Dice.classify(4) == Dice.Result.ACIERTO, "4 es acierto")
-	check(Dice.classify(6) == Dice.Result.CRITICO, "6 es crítico")
-	check(Dice.is_hit(6), "el crítico también es acierto")
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 1
-	for r in Dice.roll_many(rng, 50):
-		check(r >= 1 and r <= 6, "tirada dentro de 1..6")
-
-
-func test_economy() -> void:
-	var a := Adalid.new("A")
-	check(a.eter == 20, "Éter inicial 20")
-	check(a.vitality == Rules.STARTING_VITALITY, "vitalidad inicial")
-	check(Economy.round_income(a) == 10 + 3, "ronda: 10 + 3 de interés")
-	a.streak = 2
-	check(Economy.round_income(a) == 10 + 3 + 4, "ronda con racha 2: +4")
-	Economy.reward_winner(a)
-	check(a.eter == 27 and a.streak == 3, "ganar da 7 y sube la racha")
-	Economy.punish_loser(a, 5)
-	check(a.streak == 0 and a.vitality == Rules.STARTING_VITALITY - 5, "perder resetea racha y quita vida")
-	check(a.buy(Catalog.by_id("golem")) and a.eter == 24, "comprar descuenta el coste")
-	a.no_interest_rounds = 1
-	check(Economy.interest(a) == 0, "Cristalizar anula el interés")
-	a.no_interest_rounds = 0
-	a.interest_override = 2
-	check(Economy.interest(a) == 2, "Encantamiento baja el interés a 2")
-	a.eter = 0
-	check(not a.buy(Catalog.by_id("golem")), "no se puede comprar sin Éter")
-
-
-func test_synergy() -> void:
-	check(Synergy.tier_for_count(2) == 0, "2 no activa sinergia")
-	check(Synergy.tier_for_count(3) == 3, "3 activa nivel 3")
-	check(Synergy.tier_for_count(6) == 5, "6 activa nivel 5")
-	check(Synergy.tier_for_count(9) == 7, "9 activa nivel 7")
-	var cards: Array = [Catalog.by_id("plasma"), Catalog.by_id("lava"), Catalog.by_id("salamandra")]
-	var active := Synergy.active(cards)
-	check(active.get(Rules.ClassType.FUEGO, 0) == 3, "plasma + lava + salamandra = Fuego (3)")
-	check(not active.has(Rules.ClassType.TIERRA), "una sola tierra no activa")
-
-
-func test_champion() -> void:
-	var ch := Champion.new(Catalog.by_id("lava"), 1)
-	check(ch.attack() == 4 + 3 and ch.max_defense() == 8 + 3, "duplicar un elemental da +3/+3")
-	var hero := Champion.new(Catalog.by_id("arcangel"), 1)
-	check(hero.attack() == 20, "los legendarios no suben de nivel")
-	check(ch.take_damage(5) == 5 and ch.alive, "recibe daño y sigue vivo")
-	check(ch.take_damage(100) == 6 and not ch.alive, "no se inflige más daño que la vida restante")
-	ch.heal(3)
-	check(ch.alive and ch.defense_left == 3, "curar en el mismo asalto lo devuelve a la vida")
-	var sombra := Champion.new(Catalog.by_id("sombra"))
-	sombra.stealth = true
-	check(sombra.attack() == 6, "asesino en sigilo hace el doble de daño")
-	check(Catalog.by_id("senor_demonio").keywords_for(5) == [Rules.Keyword.ANIQUILA], "señor demonio 4-6 aniquila")
-	check(Catalog.by_id("senor_demonio").keywords_for(2) == [Rules.Keyword.MOV], "señor demonio 1-3 mueve")
+	check(Dice.classify(1) == Rules.Die.PIFIA, "1 es pifia (--)")
+	check(Dice.classify(2) == Rules.Die.FALLO and Dice.classify(3) == Rules.Die.FALLO, "2-3 es fallo (-)")
+	check(Dice.classify(4) == Rules.Die.ACIERTO and Dice.classify(5) == Rules.Die.ACIERTO, "4-5 es acierto (+)")
+	check(Dice.classify(6) == Rules.Die.CRITICO, "6 es crítico (++)")
+	check(Dice.worsen(Rules.Die.CRITICO) == Rules.Die.ACIERTO and Dice.worsen(Rules.Die.PIFIA) == Rules.Die.PIFIA, "Hackeo empeora un rango")
+	check(Dice.meets(Rules.Die.ACIERTO, [Rules.Die.ACIERTO, Rules.Die.CRITICO]), "+ cumple un requisito de +/++")
+	check(not Dice.meets(Rules.Die.FALLO, [Rules.Die.CRITICO]), "- no cumple ++")
+	check(Dice.d20_to_cell(15) == 15 and Dice.d20_to_cell(16) == -1, "d20 señala casillas 1..15")
 
 
 func test_catalog() -> void:
-	var ids := {}
+	check(Catalog.all().size() == 55, "50 base + 5 héroes")
+	var pirata := Catalog.by_id("pirata_fuego")
+	check(pirata.attack == 2 and pirata.defense == 7 and pirata.cost == 3, "Pirata de fuego 2/6 +1 de vida, cuesta 3")
+	var asesino := Catalog.by_id("asesino_hielo")
+	check(asesino.attack == 6 and asesino.defense == 4, "Asesino de hielo 5/2 → +1 ataque, +2 vida")
+	var arquero := Catalog.by_id("arquero_fuego")
+	check(arquero.attack == 1 and arquero.defense == 3 and arquero.reach() == 3, "Arquero de fuego 1/2 +1 vida, alcance 3")
+	check(Catalog.by_id("mago_aire").reach() == 2 and Catalog.by_id("robot_tierra").reach() == 1, "alcance de mago 2, resto 1")
+	var hero := Catalog.by_id("angel_arquero")
+	check(hero.hero and hero.cost == 10 and hero.reach() == 3 and hero.has_archetype(Rules.Archetype.ARQUERO), "héroe de 10 con dos arquetipos")
+	var with_power := 0
 	for c in Catalog.all():
-		check(not ids.has(c.id), "id duplicado: %s" % c.id)
-		ids[c.id] = true
-		check(not c.classes.is_empty(), "%s tiene clase" % c.id)
-		var covered := {}
-		for row in c.actions:
-			for v in range(row["min"], row["max"] + 1):
-				check(not covered.has(v), "%s: el valor %d está en dos filas" % [c.id, v])
-				covered[v] = true
-		for v in range(1, 7):
-			check(covered.has(v), "%s: ningún resultado para el DA %d" % [c.id, v])
-	check(Catalog.by_tier(Rules.Tier.COMUN).size() == 12, "12 comunes de relleno")
-	check(Catalog.by_tier(Rules.Tier.ELEMENTAL).size() == 5, "5 señores elementales")
-	check(Catalog.by_tier(Rules.Tier.HEROE).size() == 9, "9 héroes")
-	check(Catalog.by_tier(Rules.Tier.LEGENDARIO).size() == 2, "2 legendarios")
+		if c.has_power():
+			with_power += 1
+	check(with_power == 55, "todas las cartas tienen poder (hay %d)" % with_power)
+	check(Catalog.by_id("mago_fuego").power_requirement() == [Rules.Die.ACIERTO, Rules.Die.CRITICO], "Bola de fuego requiere + o ++")
 
 
-func test_combat_deterministic() -> void:
-	var g1 := Game.new(["Ana", "Bruno"], 42)
-	var g2 := Game.new(["Ana", "Bruno"], 42)
-	var c1 := g1.quick_combat(g1.adalids[0], g1.adalids[1])
-	var c2 := g2.quick_combat(g2.adalids[0], g2.adalids[1])
-	check(c1.log == c2.log, "con la misma semilla el combate es idéntico")
-	check(c1.round_no >= 1 and c1.round_no <= Rules.MAX_ROUNDS, "dura entre 1 y 4 asaltos")
-
-
-func test_combat_wipe() -> void:
-	var a := Adalid.new("Fuerte")
-	var b := Adalid.new("Débil")
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 7
-	var board_a := Game.board_from_ids(a, ["arcangel", "arcangel", "arcangel", "arcangel", "arcangel", "arcangel"])
-	var board_b := Game.board_from_ids(b, ["diablillo", null, null, null, null, null])
-	var combat := Combat.new(board_a, board_b, rng)
-	var result := combat.run()
-	check(result["winner"] == a, "seis arcángeles ganan a un diablillo")
-	check(b.vitality < Rules.STARTING_VITALITY, "el perdedor pierde vitalidad")
-	check(result["damage"] == board_a.strength() - board_b.strength() + 1, "daño = diferencia de fuerza + 1")
-	check(a.eter == 20 + 7 and a.streak == 1, "el ganador cobra 7 y racha 1")
-
-
-func test_block_overflow() -> void:
-	# Un bloqueador que muere pasa el exceso al protegido.
-	var atk := Champion.new(Catalog.by_id("arcangel"))
-	var guard := Champion.new(Catalog.by_id("escudero"))
-	var ward := Champion.new(Catalog.by_id("chispa"))
+func test_adalid_board() -> void:
 	var a := Adalid.new("A")
-	var b := Adalid.new("B")
-	var board_a := Battlefield.new(a)
-	board_a.place(atk, 0)
-	var board_b := Battlefield.new(b)
-	board_b.place(ward, 0)
-	board_b.place(guard, 1)
-	ward.blocked_by = guard
-	var combat := Combat.new(board_a, board_b)
-	combat.deal_damage(atk, board_a, ward, board_b, 20, "ataca")
-	check(not guard.alive, "el bloqueador muere")
-	check(not ward.alive, "el exceso mata al protegido")
+	check(a.life == 30 and a.eter == 30, "empieza con 30 de vida y 30 de Éter")
+	check(a.cuartel_capacity() == 8 and a.battle_size() == 3 and a.dice_count() == 1 and a.hero_slots() == 0, "pistas iniciales 8 / 3 / 1")
+	check(a.upgrade_cost(Adalid.Track.CUARTEL) == 5, "primera mejora cuesta 5")
+	check(a.upgrade(Adalid.Track.CUARTEL) and a.eter == 25 and a.cuartel_capacity() == 11, "cuartel 8 → 11")
+	check(a.upgrade_cost(Adalid.Track.CUARTEL) == 10, "segunda mejora cuesta 10")
+	check(a.upgrade(Adalid.Track.CUARTEL) and a.cuartel_capacity() == 14, "cuartel 11 → 14")
+	check(a.upgrade_cost(Adalid.Track.CUARTEL) == 15 and a.upgrade(Adalid.Track.CUARTEL), "tercera cuesta 15 y desbloquea H")
+	check(a.hero_slots() == 1 and a.cuartel_capacity() == 14, "H da un hueco de héroe sin cambiar la capacidad")
+	check(a.eter == 0 and not a.upgrade(Adalid.Track.BATTLE), "sin Éter no se mejora")
+	a.eter = 30
+	check(a.interest() == 9, "interés 3 por cada 10 ahorrados")
+	a.eter = 7
+	check(a.interest() == 0 and a.cycle_income() == 10, "sin 10 ahorrados no hay interés")
+	a.record_result(true)
+	a.record_result(true)
+	check(a.streak == 2 and a.streak_is_win and a.streak_bonus() == 10, "racha de 2 victorias da 10")
+	a.record_result(false)
+	check(a.streak == 1 and not a.streak_is_win, "perder tras ganar reinicia la racha")
+	a.record_result(false)
+	check(a.streak == 2 and a.streak_bonus() == 10, "la racha de derrotas también cuenta")
 
 
-func test_reserve_and_shop() -> void:
+func test_cuartel() -> void:
 	var a := Adalid.new("A")
 	a.eter = 100
-	a.buy(Catalog.by_id("lobo"))
-	a.buy(Catalog.by_id("lobo"))
-	check(a.reserve.size() == 1 and a.reserve[0].duplicates == 1, "comprar dos veces la misma carta la duplica")
-	check(a.reserve[0].attack() == 4, "lobo duplicado: 3 + 1 de ataque")
-	a.buy(Catalog.by_id("arcangel"))
-	a.buy(Catalog.by_id("arcangel"))
-	check(a.find_card("arcangel").duplicates == 0 and a.reserve.size() == 3, "los legendarios no se duplican")
-	var value := a.sell(a.find_card("lobo"))
-	check(value == 1 and a.reserve.size() == 2, "vender devuelve la mitad del coste (mín. 1)")
-	a.sell_value_override = 1
-	check(a.sell_value(a.reserve[0]) == 1, "Deshonor: vender da 1")
-	a.eter = 9
-	check(not a.level_up(), "no sube de nivel sin Éter")
-	a.eter = 10
-	check(a.level_up() and a.level == 2 and a.eter == 0, "subir de nivel cuesta 10")
+	var lobo := Catalog.by_id("salvaje_fuego")
+	for i in 4:
+		check(a.buy(lobo), "compra copia %d" % (i + 1))
+	var ch := a.find_card("salvaje_fuego")
+	check(ch.copies == 4 and ch.afi() == 2, "4 copias → AFI 2")
+	check(ch.base_attack() == lobo.attack + 1 + 2 and ch.base_defense() == lobo.defense + 1 + 2, "duplicado +1/+1 y AFI +2/+2")
+	check(not a.buy(lobo), "no hay quinta copia")
+	check(a.base_count() == 4, "las copias cuentan para el cuartel")
+	for i in 4:
+		a.add_card(Catalog.by_id("robot_aire"))
+	check(a.base_count() == 8 and not a.can_add(Catalog.by_id("mago_aire")), "cuartel lleno con 8")
+	var hero := Catalog.by_id("robot_caballero")
+	check(not a.can_add(hero), "sin hueco H no caben héroes")
+	a.upgrades[Adalid.Track.CUARTEL] = 3
+	check(a.can_add(hero) and a.buy(hero) and a.hero_count() == 1, "con H se compra un héroe")
+	check(not a.can_add(Catalog.by_id("pirata_muerto")), "solo un héroe por hueco")
+	var value := a.sell(ch)
+	check(value == 1 and ch.copies == 3, "vender quita una copia y da la mitad del coste")
 
 
-func test_deck() -> void:
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 3
-	var deck := Deck.new(rng)
-	check(deck.size() == 12 * 14 + 5 * 4 + 9 + 2, "el mazo tiene 199 cartas")
-	var hand := deck.draw(4)
-	check(hand.size() == 4 and deck.size() == 195, "robar saca cartas del mazo")
-	deck.put_back(hand)
-	check(deck.size() == 199, "devolver las reintegra")
-
-
-func test_roster() -> void:
+func test_board() -> void:
+	check(Board.pos_from(0, 1, 2) == Vector2i(2, 2), "lado 0, fila 1 (frente) → y = 2")
+	check(Board.pos_from(1, 1, 2) == Vector2i(2, 3), "lado 1, fila 1 (frente) → y = 3")
+	check(Board.pos_from(0, 3, 0) == Vector2i(0, 0) and Board.pos_from(1, 3, 4) == Vector2i(4, 5), "las filas 3 son los bordes")
+	check(Board.row_of(Vector2i(2, 2)) == 1 and Board.row_of(Vector2i(2, 5)) == 3, "fila desde el frente")
+	check(Board.distance(Board.pos_from(0, 1, 2), Board.pos_from(1, 1, 2)) == 1, "los frentes se tocan")
+	check(Board.opposite(Vector2i(1, 0)) == Vector2i(1, 5), "casilla opuesta = espejo")
+	check(Board.cell_index(Board.pos_from(0, 2, 3)) == 9 and Board.pos_from_cell(1, 9) == Board.pos_from(1, 2, 3), "casillas 1..15")
 	var a := Adalid.new("A")
-	a.eter = 1000
-	for id in ["salamandra", "lobo", "golem", "plasma", "lava"]:
-		a.buy(Catalog.by_id(id))
-	var chosen: Array[Champion] = []
-	chosen.assign(a.reserve)
-	var errors := Roster.validate(a, chosen)
-	check(errors.size() == 3, "nivel 1: dos elementales dan 3 errores (nivel x2 y límite), tiene %d" % errors.size())
-	a.level = 2
-	errors = Roster.validate(a, chosen)
-	check(errors.size() == 1, "nivel 2: solo un elemental permitido")
-	a.level = 3
-	check(Roster.validate(a, chosen).is_empty(), "nivel 3 con Fuego (3): plasma y lava válidos")
-	var pick := Roster.auto_pick(a)
-	check(pick.size() == 5 and Roster.validate(a, pick).is_empty(), "la IA alinea las 5 cartas")
-	a.buy(Catalog.by_id("demonio_electrico"))
-	var with_hero: Array[Champion] = []
-	with_hero.assign(a.reserve)
-	check(not Roster.validate(a, with_hero).is_empty(), "un héroe necesita sinergia (5)")
-	a.kidnapped = a.find_card("lobo")
-	check(not a.usable_cards().has(a.kidnapped), "el secuestrado no se puede usar")
+	var b := Adalid.new("B")
+	var board := Board.new(a, b)
+	var ch := Champion.new(Catalog.by_id("robot_fuego"))
+	board.place(ch, Board.pos_from(0, 1, 0))
+	check(ch.side == 0 and board.pos_of(ch) == Vector2i(0, 2), "colocar fija el lado")
+	check(board.move(ch, Vector2i(0, 3)) and not board.move(ch, Vector2i(9, 9)), "mover a casilla libre, no fuera")
+	check(board.alive_count(0) == 1 and board.alive_count(1) == 0, "conteo por lado")
 
 
-func test_death_rattle() -> void:
+func test_schedule() -> void:
+	for n in [4, 6, 5, 3]:
+		var table := Schedule.table_for(n)
+		for column in table:
+			var seen := {}
+			for pair in column:
+				check(not seen.has(pair[0]) and not seen.has(pair[1]), "%d jugadores: nadie pelea dos veces por columna" % n)
+				seen[pair[0]] = true
+				seen[pair[1]] = true
+		var meetings := {}
+		for column in table:
+			for pair in column:
+				var key := [mini(pair[0], pair[1]), maxi(pair[0], pair[1])]
+				meetings[key] = meetings.get(key, 0) + 1
+		check(meetings.size() == n * (n - 1) / 2, "%d jugadores: todos contra todos" % n)
+	var adalids: Array[Adalid] = []
+	for i in 6:
+		adalids.append(Adalid.new("P%d" % i))
+	adalids[1].eliminated = true
+	adalids[2].eliminated = true
+	var pairs := Schedule.pairs_for(1, adalids)
+	check(pairs.size() == 2 and pairs[1].size() == 2, "con dos eliminados los sueltos se emparejan")
+
+
+func test_battle_basics() -> void:
 	var rng := RandomNumberGenerator.new()
-	rng.seed = 9
-	var killer := Adalid.new("K")
-	var victim := Adalid.new("V")
-	victim.add_card(Catalog.by_id("salamandra"))
-	victim.add_card(Catalog.by_id("plasma"))
-	check(DeathRattle.dominant_class(victim, rng) == Rules.ClassType.FUEGO, "clase dominante: Fuego")
-	DeathRattle.apply(killer, victim, rng)
-	check(killer.vitality == Rules.STARTING_VITALITY - 3, "Venganza ígnea quita 3")
-	var robot_victim := Adalid.new("R")
-	robot_victim.add_card(Catalog.by_id("dron"))
-	killer.eter = 20
-	DeathRattle.apply(killer, robot_victim, rng)
-	check(killer.eter == 10, "Hackeo quita la mitad del Éter")
-	var angel_victim := Adalid.new("B")
-	angel_victim.add_card(Catalog.by_id("querubin"))
-	angel_victim.eliminated = true
-	DeathRattle.apply(killer, angel_victim, rng)
-	check(not angel_victim.eliminated and angel_victim.vitality == 5 and angel_victim.reserve.is_empty(),
-		"Resurrección revive con 5 y sin ángeles")
+	rng.seed = 5
+	var a := Adalid.new("A")
+	var b := Adalid.new("B")
+	var tank := Champion.new(Catalog.by_id("defensor_tierra"))
+	var weak := Champion.new(Catalog.by_id("arquero_fuego"))
+	var battle := Battle.new(a, b, [{ Vector2i(2, 1): tank }, { Vector2i(2, 1): weak }], rng, 1)
+	var result := battle.run()
+	check(result["winner"] == a, "un defensor 1/10 gana a un arquero 1/3 (dura %d asaltos)" % result["rounds"])
+	check(b.life == 29 and a.life == 30, "la batalla 1 quita 1 de vida al perdedor")
+	check(b.streak == 1 and not b.streak_is_win and a.streak_is_win, "se registra la racha")
+	# Empate: ambos pierden.
+	var c := Adalid.new("C")
+	var d := Adalid.new("D")
+	var t1 := Champion.new(Catalog.by_id("defensor_tierra"))
+	var t2 := Champion.new(Catalog.by_id("defensor_tierra"))
+	var b2 := Battle.new(c, d, [{ Vector2i(0, 3): t1 }, { Vector2i(4, 3): t2 }], rng, 3)
+	var r2 := b2.run()
+	check(r2["tie"] and c.life == 27 and d.life == 27, "empate en la batalla 3: ambos pierden 3")
+	# Ventaja de campeones: +1 por cada uno después del primero.
+	var e := Adalid.new("E")
+	var f := Adalid.new("F")
+	var lineup_e := {}
+	for i in 3:
+		lineup_e[Vector2i(i, 1)] = Champion.new(Catalog.by_id("defensor_tierra"))
+	var b3 := Battle.new(e, f, [lineup_e, { Vector2i(2, 1): Champion.new(Catalog.by_id("mago_aire")) }], rng, 2)
+	var r3 := b3.run()
+	check(r3["winner"] == e and f.life == 30 - (2 + 2), "batalla 2 con 3 de ventaja: pierde 2 + 2")
+
+
+func test_battle_deterministic() -> void:
+	var g1 := Game.new(["A", "B", "C", "D"], 11)
+	var g2 := Game.new(["A", "B", "C", "D"], 11)
+	g1.play_cycle()
+	g2.play_cycle()
+	check(g1.log == g2.log, "misma semilla, mismo ciclo")
+	check(g1.last_battles.size() == 2, "4 jugadores: 2 batallas por ciclo")
 
 
 func test_full_game() -> void:
 	var g := Game.new(["A", "B", "C", "D", "E", "F"], 123)
-	var rounds := 0
-	while g.play_round() and rounds < 200:
-		rounds += 1
+	var cycles := 0
+	while g.play_cycle() and cycles < 300:
+		cycles += 1
 	check(g.is_over(), "la partida termina")
-	check(g.winner() != null, "hay un demiurgo")
-	check(rounds > 1, "dura más de una ronda")
+	check(g.winner() != null or g.demiurge_wins, "hay demiurgo")
+	check(cycles > 2, "dura más de dos ciclos (%d)" % cycles)
 	for a in g.adalids:
-		for ch in a.reserve:
-			check(not ch.annihilated, "no quedan aniquilados en las reservas")
-	var g2 := Game.new(["A", "B", "C", "D", "E", "F"], 123)
-	g2.play_round()
-	var g3 := Game.new(["A", "B", "C", "D", "E", "F"], 123)
-	g3.play_round()
-	check(g2.log == g3.log, "misma semilla, misma ronda")
+		check(a.base_count() <= a.cuartel_capacity(), "%s no supera su cuartel" % a.display_name)
+		check(a.hero_count() <= a.hero_slots(), "%s no supera sus héroes" % a.display_name)
 
 
 func test_human_flow() -> void:
-	# Un humano que compra, alinea y empareja a mano debe poder jugar hasta el final.
-	var g := Game.new(["Yo", "B", "C", "D", "E", "F"], 77)
+	var g := Game.new(["Yo", "B", "C", "D"], 77)
 	g.set_human(0)
+	var cycles := 0
 	var rounds := 0
-	var combats := 0
-	while g.begin_round() and rounds < 200:
-		rounds += 1
-		if g.state == Game.State.SHOPPING:
-			check(not g.shop.is_empty(), "la tienda del humano tiene cartas")
+	while g.begin_cycle() and cycles < 300:
+		cycles += 1
+		while g.state == Game.State.DRAFT:
+			check(not g.draft_pool.is_empty(), "hay cartas en el draft")
+			var pick: ChampionData = null
+			for card in g.draft_pool:
+				if g.human.can_add(card):
+					pick = card
+					break
+			if pick == null:
+				g.draft_order.pop_front()
+				g._run_draft()
+			else:
+				check(g.human_draft_pick(pick), "el humano toma una carta")
+		if g.state == Game.State.MARKET:
+			check(g.market.size() == Rules.MARKET_SIZE, "el mercado tiene 4 cartas")
 			var before := g.human.eter
-			var card: ChampionData = g.shop[0]
-			if g.human.can_pay(card.cost):
-				check(g.human_buy(card) and g.human.eter == before - card.cost, "comprar a mano descuenta el coste")
-			g.finish_shopping()
-			check(g.state == Game.State.LINEUP, "tras comprar toca alinear")
-			var bad: Array[Champion] = []
-			for ch in g.human.reserve:
-				bad.append(ch)
-			for _i in 7 - bad.size():
-				bad.append(Champion.new(Catalog.by_id("arcangel")))
-			check(not g.set_lineup(bad).is_empty(), "siete cartas o un legendario en nivel 1 se rechazan")
-			check(g.set_lineup(Roster.auto_pick(g.human)).is_empty(), "una alineación válida arranca los combates")
-		while g.state == Game.State.COMBAT:
-			combats += 1
-			var combat := g.current_combat
-			check(combat.round_no >= 1, "el combate humano empieza con dados lanzados")
-			g.commit_human_pairs(combat.auto_pairs(0))
-			check(combats < 2000, "el combate humano no se queda en bucle")
-		check(g.state == Game.State.ROUND_END or g.state == Game.State.OVER, "la ronda termina en un estado conocido")
+			if g.human_refresh_market():
+				check(g.human.eter == before - 2, "refrescar cuesta 2")
+			if g.human.can_upgrade(Adalid.Track.BATTLE) and g.human.eter >= g.human.upgrade_cost(Adalid.Track.BATTLE) + 5:
+				g.human_upgrade(Adalid.Track.BATTLE)
+			for card in g.market.duplicate():
+				g.human_buy(card)
+			g.finish_market()
+			check(g.state == Game.State.LINEUP, "tras el mercado toca alinear")
+			var bad := Game.auto_lineup(g.human)
+			bad[Vector2i(9, 9)] = Champion.new(Catalog.by_id("mago_aire"))
+			check(not g.set_lineup(bad).is_empty(), "una alineación inválida se rechaza")
+			check(g.set_lineup(Game.auto_lineup(g.human)).is_empty(), "la automática vale")
+		while g.state == Game.State.BATTLE:
+			rounds += 1
+			g.commit_human_dice(g.current_battle.auto_assign(0))
+			check(rounds < 5000, "la batalla humana no se queda en bucle")
+		check(g.state == Game.State.CYCLE_END or g.state == Game.State.OVER, "el ciclo termina en un estado conocido")
 	check(g.is_over(), "la partida con humano termina")
-	check(combats > 0, "el humano combatió")
+	check(rounds > 0, "el humano combatió")
