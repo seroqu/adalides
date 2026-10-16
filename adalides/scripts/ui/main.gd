@@ -11,20 +11,6 @@ const DRAG_THRESHOLD := 8.0
 const HAND_SCALE := 0.85
 const HAND_CARD_W := 170.0
 
-const HELP_TEXT := """[b]Objetivo.[/b] Eres un adalid con 30 de vida. Cada ciclo armas un ejército de campeones y lo enfrentas al de otro adalid en una batalla automática de 4 asaltos. Pierdes vida al perder batallas; el último en pie es el nuevo demiurgo.
-
-[b]Draft (solo el primer ciclo).[/b] Pulsa el mazo para repartir; cada adalid toma 2 cartas por turnos.
-
-[b]Mercado (60 s).[/b] Compra campeones con Éter (◆), refresca el mercado por 2 ◆, vende cartas de tu mano por la mitad de su coste y sube tus tres pistas: tamaño del cuartel, campeones en batalla y dados. Cada mejora cuesta 5 ◆ más que la anterior de su pista. Los héroes (★) necesitan un hueco H del cuartel.
-
-[b]Copias.[/b] La segunda copia de una carta da +1/+1; la tercera y la cuarta activan su poder mejorado (AFI 1 y AFI 2).
-
-[b]Alineación (30 s).[/b] Arrastra las cartas de tu mano a tu lado del tablero (hasta el tope de tu pista). La fila junto a la línea dorada es el frente: alcance 1 salvo Arquero (3) y Mago (2).
-
-[b]Batalla.[/b] Cada asalto los campeones avanzan un paso, atacan al rival más cercano y usan sus poderes. Lanzas tantos dados de tres caras (−, neutra, +) como marque tu pista de Dados; el motor los reparte entre los poderes. Tres, seis o nueve campeones del mismo elemento (o dos, cuatro o seis del mismo arquetipo) en batalla activan sus tiers.
-
-[b]Éter por ciclo.[/b] 10, más 3 por cada 10 ahorrados, más el bono de racha (victorias o derrotas seguidas). Pulsa «Habilidades» para ver qué tiers tienes a mano y «Adalides» para la tabla."""
-
 var game: Game
 var board3d: Board3D
 var table: DraftTable
@@ -52,6 +38,7 @@ var tier_label_top: Label
 var tier_label_bottom: Label
 
 var selected_card: ChampionData = null
+var selected_card3d: Card3D = null # La carta física elegida (puede haber copias iguales en la mesa).
 var table_busy: bool = false
 var card_detail: VBoxContainer
 var drop_zone: PanelContainer
@@ -312,18 +299,12 @@ func _build_ui() -> void:
 	skills_box = VBoxContainer.new()
 	skills_box.add_theme_constant_override("separation", 6)
 	skv.add_child(_scroll(skills_box))
-	help_panel = _overlay(Vector2(760, 600), false)
+	help_panel = _overlay(Vector2(1040, 660), false)
 	var hv := VBoxContainer.new()
+	hv.add_theme_constant_override("separation", 10)
 	help_panel.add_child(hv)
 	hv.add_child(_overlay_header("Cómo se juega", help_panel))
-	var help := RichTextLabel.new()
-	help.bbcode_enabled = true
-	help.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	help.add_theme_font_size_override("normal_font_size", 15)
-	help.add_theme_font_size_override("bold_font_size", 15)
-	help.add_theme_font_override("bold_font", GameTheme.bold_font)
-	help.text = HELP_TEXT
-	hv.add_child(help)
+	hv.add_child(HelpPage.build())
 
 	# Capa de efectos 2D: destello, carteles de tier, celebraciones y arrastre.
 	fx_layer = Control.new()
@@ -419,10 +400,31 @@ func _build_ui() -> void:
 	menu_box.add_theme_constant_override("separation", 10)
 	menu_box.custom_minimum_size.x = 440
 	mp.add_child(menu_box)
+	var emblem := TextureRect.new()
+	emblem.name = "Emblem"
+	emblem.texture = Icons.card_back()
+	emblem.custom_minimum_size = Vector2(80, 112)
+	emblem.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	emblem.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	emblem.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	menu_box.add_child(emblem)
 	menu_title = GameTheme.title("Adalides del demiurgo", 36)
 	menu_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	menu_title.autowrap_mode = TextServer.AUTOWRAP_WORD
 	menu_box.add_child(menu_title)
+	var strip := HBoxContainer.new()
+	strip.name = "Strip"
+	strip.alignment = BoxContainer.ALIGNMENT_CENTER
+	strip.add_theme_constant_override("separation", 10)
+	menu_box.add_child(strip)
+	for e in Catalog.ELEM_ORDER:
+		var ic := TextureRect.new()
+		ic.texture = Icons.element(e)
+		ic.modulate = Icons.ELEMENT_COLORS[e]
+		ic.custom_minimum_size = Vector2(28, 28)
+		ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		strip.add_child(ic)
 	var sub := _label("Autobatallas de arquetipos y elementos")
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sub.add_theme_color_override("font_color", GameTheme.TEXT_DIM)
@@ -451,6 +453,9 @@ func _build_ui() -> void:
 	seed_edit.custom_minimum_size.x = 120
 	seed_edit.alignment = HORIZONTAL_ALIGNMENT_CENTER
 	seed_row.add_child(seed_edit)
+	# Los paneles desplegables van por encima de la mano y del menú (la guía se abre desde la pausa).
+	for p in [standings_panel, log_panel, skills_panel, help_panel]:
+		root.move_child(p, root.get_child_count() - 1)
 
 
 func _tool_button(text: String, on_pressed: Callable) -> Button:
@@ -564,6 +569,8 @@ func _decorate_board() -> void:
 func _set_menu_mode(main: bool) -> void:
 	menu_title.text = "Adalides del demiurgo" if main else "Pausa"
 	menu_box.get_node("Subtitle").visible = main
+	menu_box.get_node("Emblem").visible = main
+	menu_box.get_node("Strip").visible = main
 	menu_box.get_node("Play").visible = main
 	menu_box.get_node("Seed").visible = main
 	menu_box.get_node("Resume").visible = not main
@@ -1179,29 +1186,33 @@ func _draft_continue() -> void:
 		_enter_state()
 
 
-func _on_table_card_pressed(card: ChampionData) -> void:
+func _on_table_card_pressed(c3d: Card3D) -> void:
 	if table_busy:
 		return
+	var card := c3d.card
 	selected_card = card
-	table.select(card)
+	selected_card3d = c3d
+	table.select(c3d)
 	if game.state == Game.State.DRAFT:
 		_refresh_draft()
 		if game.draft_current() == game.human and game.human.can_add(card):
-			_begin_drag({ "kind": "table_card", "card": card, "card3d": table.find_card(card) }, Icons.archetype(card.archetype), card.display_name)
+			_begin_drag({ "kind": "table_card", "card": card, "card3d": c3d }, Icons.archetype(card.archetype), card.display_name)
 	elif game.state == Game.State.MARKET:
 		_refresh_market()
 		if game.human.can_add(card) and game.human.can_pay(card.cost):
-			_begin_drag({ "kind": "table_card", "card": card, "card3d": table.find_card(card) }, Icons.archetype(card.archetype), card.display_name)
+			_begin_drag({ "kind": "table_card", "card": card, "card3d": c3d }, Icons.archetype(card.archetype), card.display_name)
 
 
 func _on_take_card() -> void:
 	if selected_card == null or not game.human_draft_pick(selected_card):
 		return
 	var card := selected_card
+	var c3d := selected_card3d
 	selected_card = null
+	selected_card3d = null
 	table_busy = true
 	_refresh_draft()
-	await table.take(card, true)
+	await table.take(card, true, c3d)
 	_draft_continue()
 
 
@@ -1328,10 +1339,12 @@ func _on_buy_card() -> void:
 	if selected_card == null or table_busy or not game.human_buy(selected_card):
 		return
 	var card := selected_card
+	var c3d := selected_card3d
 	selected_card = null
+	selected_card3d = null
 	table_busy = true
 	_refresh_market()
-	await table.take(card, true)
+	await table.take(card, true, c3d)
 	table_busy = false
 	_refresh_market()
 
@@ -1487,6 +1500,7 @@ func _end_drag(pos: Vector2) -> void:
 				selected_card = data["card"]
 				if c3d != null and is_instance_valid(c3d):
 					c3d.dragging = false
+					selected_card3d = c3d
 				if game.state == Game.State.DRAFT:
 					_on_take_card()
 				elif game.state == Game.State.MARKET:
@@ -1566,6 +1580,11 @@ func _play_round() -> void:
 
 func _announce_battle(battle: Battle) -> void:
 	var r := battle.result
+	var winner: Adalid = r.get("winner", null)
+	if winner != null:
+		for ch in board3d.pieces:
+			if ch.side == (0 if winner == battle.adalids[0] else 1):
+				(board3d.pieces[ch] as ChampionPiece).cheer()
 	if r.get("tie", false):
 		_celebrate("Empate", GameTheme.TEXT_DIM, false)
 	elif r.get("winner") == game.human:
@@ -1584,9 +1603,7 @@ func _animate_events(battle: Battle, evs: Array) -> void:
 		match e["type"]:
 			"move":
 				if piece != null:
-					var tw := create_tween()
-					tw.tween_property(piece, "position", Board3D.world_pos(e["to"]), 0.28).set_trans(Tween.TRANS_SINE)
-					await tw.finished
+					await piece.hop_to(Board3D.world_pos(e["to"])).finished
 			"attack":
 				var target_piece: ChampionPiece = board3d.piece_of(e["target"])
 				if piece != null and target_piece != null:
@@ -1596,13 +1613,14 @@ func _animate_events(battle: Battle, evs: Array) -> void:
 					if ch.data.reach() == 1:
 						Fx.dust_puff(board3d, piece.position, dir)
 						var lunge := piece.lunge(target_piece.position)
-						await get_tree().create_timer(0.11, false).timeout
+						await get_tree().create_timer(0.34, false).timeout
 						Fx.slash(board3d, target_piece.position + Vector3(0, 0.6, 0), color, -35.0 if dir.x <= 0 else 35.0)
 						Fx.impact(board3d, target_piece.position, color, ch.data.element, dir, 0.8)
 						_camera_shake(0.05)
 						await lunge.finished
 					else:
 						piece.play_clip("attack")
+						await get_tree().create_timer(0.3, false).timeout
 						await Fx.projectile(board3d, piece.position, target_piece.position, color, ch.data.element, ch.data.reach() >= 3)
 						Fx.impact(board3d, target_piece.position, color, ch.data.element, dir, 1.0)
 						_camera_shake(0.03)
@@ -1663,7 +1681,7 @@ func _animate_events(battle: Battle, evs: Array) -> void:
 					piece.play_clip("death")
 					Fx.burst(board3d, piece.position + Vector3(0, 0.4, 0), Color(0.5, 0.5, 0.55), 30, 0.08)
 					Fx.float_text(board3d, piece.position, "✖", Color(0.9, 0.9, 0.9), 60)
-					await get_tree().create_timer(0.7 if piece.has_model() else 0.25, false).timeout
+					await get_tree().create_timer(1.0 if piece.has_model() else 0.25, false).timeout
 	board3d.sync(battle.board.cells, true)
 	_refresh()
 
@@ -1799,12 +1817,13 @@ func _screenshot_tour(dir: String) -> void:
 	await _snap(dir.path_join("1_draft.png"))
 	if game.draft_current() == game.human and not game.draft_pool.is_empty():
 		var demo: ChampionData = game.draft_pool[7 % game.draft_pool.size()]
+		var c3d := table.find_card(demo)
 		selected_card = demo
-		table.select(demo)
+		selected_card3d = c3d
+		table.select(c3d)
 		_refresh_draft()
 		await get_tree().create_timer(0.6, false).timeout
 		await _snap(dir.path_join("1_draft_seleccion.png"))
-		var c3d := table.find_card(demo)
 		c3d.begin_drag()
 		for i in 12:
 			c3d.follow(Vector3(-3.0 + i * 0.1, 1.9, 1.2 - i * 0.25))
@@ -1827,7 +1846,8 @@ func _screenshot_tour(dir: String) -> void:
 				await _on_skip_draft()
 			else:
 				selected_card = pick
-				table.select(pick)
+				selected_card3d = table.find_card(pick)
+				table.select(selected_card3d)
 				_refresh_draft()
 				await _on_take_card()
 		while table_busy:
@@ -1836,7 +1856,8 @@ func _screenshot_tour(dir: String) -> void:
 		await get_tree().process_frame
 	if game.state == Game.State.MARKET and not game.market.is_empty():
 		selected_card = game.market[0]
-		table.select(selected_card)
+		selected_card3d = table.find_card(selected_card)
+		table.select(selected_card3d)
 		_refresh_market()
 	await _snap(dir.path_join("2_mercado.png"))
 	_toggle_overlay(skills_panel)
@@ -1845,6 +1866,11 @@ func _screenshot_tour(dir: String) -> void:
 	_toggle_pause_menu()
 	await _snap(dir.path_join("2_pausa.png"))
 	_toggle_pause_menu()
+	_toggle_overlay(help_panel)
+	await _snap(dir.path_join("2_guia.png"))
+	(help_panel.find_child("*", true, false) as Control).get_child(1).set("scroll_vertical", 700)
+	await _snap(dir.path_join("2_guia_b.png"))
+	_toggle_overlay(help_panel)
 	if game.state == Game.State.MARKET:
 		await _on_buy_card()
 		_finish_market()

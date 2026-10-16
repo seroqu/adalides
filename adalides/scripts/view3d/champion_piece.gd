@@ -54,7 +54,7 @@ func _load_model() -> void:
 		if _anim != null:
 			for name in _anim.get_animation_list():
 				var lower := String(name).to_lower()
-				for key in ["idle", "attack", "hit", "death"]:
+				for key in ["idle", "walk", "attack", "hit", "death", "cheer"]:
 					if lower.contains(key) and not _clips.has(key):
 						_clips[key] = name
 			if not _clips.has("idle") and _anim.get_animation_list().size() > 0:
@@ -120,6 +120,31 @@ func play_clip(key: String, loop := false) -> void:
 	_anim.play(name)
 	if not loop and _clips.has("idle"):
 		_anim.animation_finished.connect(func(_n: StringName) -> void: play_clip("idle", true), CONNECT_ONE_SHOT)
+
+
+## Salta a la casilla destino con un arco, clip de andar y aplastamiento al caer.
+func hop_to(target: Vector3) -> Tween:
+	play_clip("walk", true)
+	var start := position
+	var tw := create_tween()
+	tw.tween_method(func(t: float) -> void:
+		position = start.lerp(target, t) + Vector3(0, sin(t * PI) * 0.35, 0), 0.0, 1.0, 0.32).set_trans(Tween.TRANS_SINE)
+	var body: Node3D = _model if _model != null else _arch
+	if body != null:
+		tw.tween_property(body, "scale", body.scale * Vector3(1.15, 0.8, 1.15), 0.06)
+		tw.tween_property(body, "scale", body.scale, 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_callback(func() -> void: play_clip("idle", true))
+	return tw
+
+
+## Celebración al ganar la batalla.
+func cheer() -> void:
+	if _clips.has("cheer"):
+		play_clip("cheer")
+	else:
+		var tw := create_tween()
+		tw.tween_property(self, "position:y", position.y + 0.4, 0.2).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_property(self, "position:y", position.y, 0.25).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
 
 
 func has_model() -> bool:
@@ -280,8 +305,10 @@ func lunge(target: Vector3) -> Tween:
 	var origin := position
 	var toward := origin.lerp(target, 0.35)
 	var tw := create_tween()
-	tw.tween_property(self, "position", toward, 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tw.tween_property(self, "position", origin, 0.18).set_trans(Tween.TRANS_SINE)
+	tw.tween_interval(0.2) # Preparación del golpe en el clip.
+	tw.tween_property(self, "position", toward, 0.14).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_interval(0.1)
+	tw.tween_property(self, "position", origin, 0.3).set_trans(Tween.TRANS_SINE)
 	return tw
 
 

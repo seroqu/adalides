@@ -1,5 +1,5 @@
 # Construye los diez arquetipos como miniaturas low-poly con esqueleto y
-# animaciones (idle, attack, hit, death) y los exporta como GLB.
+# animaciones (idle, walk, attack por arquetipo, hit, death, cheer) y los exporta como GLB.
 # Se ejecuta dentro de Blender (vía el puente de Higgsfield o `blender -b -P`).
 import bpy, math, os
 from mathutils import Vector
@@ -32,6 +32,11 @@ col = bpy.data.collections.get(COL_NAME) or bpy.data.collections.new(COL_NAME)
 if COL_NAME not in [c.name for c in bpy.context.scene.collection.children]:
     bpy.context.scene.collection.children.link(col)
 col.hide_viewport = False; col.hide_render = False
+for o in list(col.objects):
+    bpy.data.objects.remove(o, do_unlink=True)
+for a in list(bpy.data.actions):
+    if a.name.split(".")[0] in ("idle", "walk", "attack", "hit", "death", "cheer"):
+        bpy.data.actions.remove(a)
 
 parts = []  # (objeto, hueso)
 
@@ -98,7 +103,8 @@ def make_rig(name, top, sx):
     bpy.ops.object.mode_set(mode='OBJECT')
     return rig
 
-def animate(rig, top):
+def animate(rig, top, name="melee"):
+    """Clips a 24 fps: idle, walk, attack (según arquetipo), hit, death y cheer."""
     ad = rig.animation_data_create()
     scene = bpy.context.scene
     def key(action_name, frames, length):
@@ -128,33 +134,131 @@ def animate(rig, top):
         ad.action = None
         return act
     Z = (0, 0, 0)
-    # idle: respiración y balanceo de brazos (24 fps, 48 frames en bucle)
+    def R(x=0, y=0, z=0, loc=Z):
+        return (x, y, z, loc)
+    # idle: respira, cambia el peso de pie, mira a los lados (72 frames en bucle)
     key("idle", [
-        (1, {"spine": (0, 0, 0, Z), "arm.L": (0, 0, 0, Z), "arm.R": (0, 0, 0, Z)}),
-        (24, {"spine": (2, 0, 0, (0, 0, 0.02)), "arm.L": (6, 0, 0, Z), "arm.R": (-6, 0, 0, Z), "head": (0, 0, 3, Z)}),
-        (48, {"spine": (0, 0, 0, Z), "arm.L": (0, 0, 0, Z), "arm.R": (0, 0, 0, Z)}),
-    ], 48)
-    # attack: el brazo derecho atrás y golpea hacia delante (-Y es el frente), el cuerpo acompaña
-    key("attack", [
         (1, {}),
-        (6, {"arm.R": (-70, 0, 0, Z), "spine": (0, 0, -15, Z)}),
-        (12, {"arm.R": (80, 0, 0, Z), "spine": (12, 0, 15, Z), "root": (0, 0, 0, (0, -0.15, 0))}),
-        (22, {}),
-    ], 22)
-    # hit: retroceso y temblor
+        (18, {"spine": R(2.5, 0, 1.5, (0, 0, 0.015)), "hips": R(0, 0, 0, (0.015, 0, 0)), "head": R(-2, 0, 3),
+              "arm.L": R(5), "arm.R": R(-5), "leg.L": R(-2), "leg.R": R(2)}),
+        (36, {"spine": R(0, 0, 0, (0, 0, 0.03)), "head": R(1)}),
+        (54, {"spine": R(2.5, 0, -1.5, (0, 0, 0.015)), "hips": R(0, 0, 0, (-0.015, 0, 0)), "head": R(-2, 0, -3),
+              "arm.L": R(-5), "arm.R": R(5), "leg.L": R(2), "leg.R": R(-2)}),
+        (72, {}),
+    ], 72)
+    # walk: zancada con balanceo de brazos (24 frames en bucle)
+    key("walk", [
+        (1, {"leg.L": R(30), "leg.R": R(-30), "arm.L": R(-22), "arm.R": R(22), "spine": R(4), "root": R(0, 0, 0, (0, 0, 0.02))}),
+        (7, {"spine": R(4), "root": R(0, 0, 0, (0, 0, 0.06)), "leg.L": R(0), "leg.R": R(8)}),
+        (13, {"leg.L": R(-30), "leg.R": R(30), "arm.L": R(22), "arm.R": R(-22), "spine": R(4), "root": R(0, 0, 0, (0, 0, 0.02))}),
+        (19, {"spine": R(4), "root": R(0, 0, 0, (0, 0, 0.06)), "leg.R": R(0), "leg.L": R(8)}),
+        (24, {"leg.L": R(30), "leg.R": R(-30), "arm.L": R(-22), "arm.R": R(22), "spine": R(4), "root": R(0, 0, 0, (0, 0, 0.02))}),
+    ], 24)
+    # attack: según arquetipo (-Y es el frente; hips loc y negativa = embestida)
+    if name == "arquero":
+        frames = [
+            (1, {}),
+            (6, {"arm.L": R(85), "arm.R": R(70), "spine": R(-4, 0, -10)}),
+            (12, {"arm.L": R(90), "arm.R": R(-20), "spine": R(-6, 0, -15), "head": R(0, 0, -8)}),
+            (14, {"arm.L": R(88), "arm.R": R(60), "spine": R(4, 0, -8), "hips": R(0, 0, 0, (0, -0.06, 0))}),
+            (20, {"arm.L": R(60), "arm.R": R(30), "spine": R(2, 0, -4)}),
+            (26, {}),
+        ]; length = 26
+    elif name in ("mago", "mago_lowpoly_alt"):
+        frames = [
+            (1, {}),
+            (8, {"arm.L": R(160), "arm.R": R(160), "spine": R(-10), "head": R(-12), "root": R(0, 0, 0, (0, 0, 0.06))}),
+            (12, {"arm.L": R(170), "arm.R": R(170), "spine": R(-12), "head": R(-14), "root": R(0, 0, 0, (0, 0, 0.12))}),
+            (16, {"arm.L": R(90), "arm.R": R(90), "spine": R(20), "head": R(10), "hips": R(0, 0, 0, (0, -0.15, 0))}),
+            (20, {"arm.L": R(80), "arm.R": R(80), "spine": R(15), "head": R(6), "hips": R(0, 0, 0, (0, -0.1, 0))}),
+            (28, {}),
+        ]; length = 28
+    elif name == "angel":
+        frames = [
+            (1, {}),
+            (6, {"root": R(0, 0, 0, (0, 0, 0.3)), "arm.L": R(20, 0, -60), "arm.R": R(20, 0, 60), "spine": R(-8), "leg.L": R(15), "leg.R": R(15)}),
+            (12, {"root": R(0, 0, 0, (0, -0.3, 0.35)), "arm.L": R(90, 0, -20), "arm.R": R(90, 0, 20), "spine": R(20), "head": R(8), "leg.L": R(10), "leg.R": R(20)}),
+            (18, {"root": R(0, 0, 0, (0, -0.1, 0.2)), "arm.L": R(50, 0, -30), "arm.R": R(50, 0, 30), "spine": R(8), "leg.L": R(8), "leg.R": R(8)}),
+            (26, {}),
+        ]; length = 26
+    elif name in ("demonio", "salvaje"):
+        frames = [
+            (1, {}),
+            (6, {"arm.L": R(-80, 0, -30), "arm.R": R(-80, 0, 30), "spine": R(-10), "head": R(-8), "hips": R(0, 0, 0, (0, 0.1, 0)), "leg.L": R(8), "leg.R": R(-8)}),
+            (10, {"arm.L": R(110, 0, -10), "arm.R": R(110, 0, 10), "spine": R(30), "head": R(12), "hips": R(0, 0, 0, (0, -0.3, 0)), "root": R(0, 0, 0, (0, 0, 0.1)), "leg.L": R(30), "leg.R": R(-30)}),
+            (15, {"arm.L": R(95, 0, -10), "arm.R": R(95, 0, 10), "spine": R(24), "head": R(8), "hips": R(0, 0, 0, (0, -0.25, 0)), "leg.L": R(20), "leg.R": R(-20)}),
+            (24, {}),
+        ]; length = 24
+    elif name == "robot":
+        frames = [
+            (1, {}),
+            (5, {"arm.R": R(-40), "spine": R(0, 0, -10)}),
+            (9, {"arm.R": R(100), "spine": R(10, 0, 15), "hips": R(0, 0, 0, (0, -0.25, 0)), "leg.R": R(25), "leg.L": R(-15)}),
+            (13, {"arm.R": R(100), "spine": R(10, 0, 15), "hips": R(0, 0, 0, (0, -0.25, 0)), "leg.R": R(25), "leg.L": R(-15)}),
+            (20, {}),
+        ]; length = 20
+    elif name == "asesino":
+        frames = [
+            (1, {}),
+            (4, {"arm.R": R(-70), "spine": R(0, 0, -20), "head": R(0, 0, -8)}),
+            (7, {"arm.R": R(100), "spine": R(18, 0, 20), "hips": R(0, 0, 0, (0, -0.3, 0)), "leg.R": R(30), "leg.L": R(-20)}),
+            (10, {"arm.L": R(-70), "arm.R": R(40), "spine": R(5, 0, 25), "hips": R(0, 0, 0, (0, -0.2, 0)), "leg.R": R(20), "leg.L": R(-10)}),
+            (13, {"arm.L": R(100), "arm.R": R(20), "spine": R(20, 0, -15), "hips": R(0, 0, 0, (0, -0.35, 0)), "leg.L": R(30), "leg.R": R(-20)}),
+            (20, {}),
+        ]; length = 20
+    elif name == "muerto":
+        frames = [
+            (1, {}),
+            (8, {"arm.R": R(-70), "arm.L": R(-30), "spine": R(-12, 0, -18), "head": R(-10), "hips": R(0, 0, 0, (0, 0.08, 0))}),
+            (14, {"arm.R": R(110), "arm.L": R(20), "spine": R(28, 0, 18), "head": R(14), "hips": R(0, 0, 0, (0, -0.28, 0)), "leg.R": R(30), "leg.L": R(-20)}),
+            (18, {"arm.R": R(95), "arm.L": R(10), "spine": R(22, 0, 15), "head": R(10), "hips": R(0, 0, 0, (0, -0.22, 0)), "leg.R": R(25), "leg.L": R(-15)}),
+            (28, {}),
+        ]; length = 28
+    elif name == "defensor":
+        frames = [
+            (1, {}),
+            (6, {"arm.L": R(-30), "arm.R": R(-95), "spine": R(-8, 0, -22), "head": R(-5, 0, -10), "hips": R(0, 0, 0, (0, 0.08, 0)), "leg.L": R(10), "leg.R": R(-10)}),
+            (10, {"arm.L": R(90), "arm.R": R(110), "spine": R(28, 0, 22), "head": R(10, 0, 8), "hips": R(0, 0, 0, (0, -0.28, 0)), "leg.R": R(35), "leg.L": R(-25)}),
+            (14, {"arm.L": R(80), "arm.R": R(95), "spine": R(22, 0, 18), "head": R(8, 0, 6), "hips": R(0, 0, 0, (0, -0.22, 0)), "leg.R": R(28), "leg.L": R(-20)}),
+            (24, {}),
+        ]; length = 24
+    else:  # melee (pirata y resto)
+        frames = [
+            (1, {}),
+            (6, {"arm.R": R(-95), "arm.L": R(25), "spine": R(-8, 0, -22), "head": R(-5, 0, -10), "hips": R(0, 0, 0, (0, 0.08, 0)), "leg.L": R(10), "leg.R": R(-10)}),
+            (10, {"arm.R": R(110), "arm.L": R(-30), "spine": R(28, 0, 22), "head": R(10, 0, 8), "hips": R(0, 0, 0, (0, -0.28, 0)), "root": R(0, 0, 0, (0, 0, 0.02)), "leg.R": R(35), "leg.L": R(-25)}),
+            (14, {"arm.R": R(95), "arm.L": R(-20), "spine": R(22, 0, 18), "head": R(8, 0, 6), "hips": R(0, 0, 0, (0, -0.22, 0)), "leg.R": R(28), "leg.L": R(-20)}),
+            (24, {}),
+        ]; length = 24
+    key("attack", frames, length)
+    # hit: sale despedido hacia atrás, agita los brazos y se recompone
     key("hit", [
         (1, {}),
-        (4, {"spine": (-18, 0, 0, Z), "head": (-15, 0, 0, Z), "root": (0, 0, 0, (0, 0.12, 0))}),
-        (8, {"spine": (6, 0, 0, Z), "root": (0, 0, 0, (0, 0.04, 0))}),
-        (14, {}),
-    ], 14)
-    # death: cae de espaldas y se hunde
+        (3, {"spine": R(-22, 0, 6), "head": R(-20), "hips": R(0, 0, 0, (0, 0.18, 0)), "arm.L": R(-40), "arm.R": R(-40), "root": R(0, 0, 0, (0, 0, 0.03)), "leg.L": R(-10), "leg.R": R(10)}),
+        (7, {"spine": R(8, 0, -3), "hips": R(0, 0, 0, (0, 0.1, 0)), "arm.L": R(15), "arm.R": R(15)}),
+        (11, {"spine": R(-4, 0, 2), "hips": R(0, 0, 0, (0, 0.03, 0))}),
+        (16, {}),
+    ], 16)
+    # death: se tambalea, se le doblan las rodillas, cae de espaldas con rebote y se hunde
     key("death", [
         (1, {}),
-        (10, {"root": (-80, 0, 0, (0, 0.2, 0.1)), "arm.L": (0, 0, -60, Z), "arm.R": (0, 0, 60, Z)}),
-        (18, {"root": (-90, 0, 0, (0, 0.3, -0.05)), "arm.L": (0, 0, -70, Z), "arm.R": (0, 0, 70, Z)}),
-        (30, {"root": (-90, 0, 0, (0, 0.3, -0.5)), "arm.L": (0, 0, -70, Z), "arm.R": (0, 0, 70, Z)}),
-    ], 30)
+        (6, {"spine": R(-10), "hips": R(0, 0, 0, (0, 0.1, 0)), "head": R(-10), "arm.L": R(-30), "arm.R": R(-30)}),
+        (12, {"root": R(0, 0, 0, (0, 0, -0.12)), "leg.L": R(40), "leg.R": R(-20), "spine": R(15), "head": R(20), "arm.L": R(10), "arm.R": R(10)}),
+        (18, {"root": R(-75, 0, 0, (0, 0.15, 0.1)), "arm.L": R(0, 0, -60), "arm.R": R(0, 0, 60), "leg.L": R(10), "leg.R": R(-5)}),
+        (22, {"root": R(-95, 0, 0, (0, 0.3, 0.0)), "arm.L": R(0, 0, -70), "arm.R": R(0, 0, 70)}),
+        (26, {"root": R(-88, 0, 0, (0, 0.3, 0.03)), "arm.L": R(0, 0, -70), "arm.R": R(0, 0, 70)}),
+        (40, {"root": R(-90, 0, 0, (0, 0.3, -0.6)), "arm.L": R(0, 0, -70), "arm.R": R(0, 0, 70)}),
+    ], 40)
+    # cheer: salta con los brazos en alto (victoria)
+    key("cheer", [
+        (1, {}),
+        (6, {"spine": R(6), "arm.L": R(-30), "arm.R": R(-30), "root": R(0, 0, 0, (0, 0, -0.04)), "leg.L": R(10), "leg.R": R(10)}),
+        (12, {"root": R(0, 0, 0, (0, 0, 0.35)), "arm.L": R(170), "arm.R": R(170), "head": R(-15), "spine": R(-6), "leg.L": R(20), "leg.R": R(20)}),
+        (18, {"root": R(0, 0, 0, (0, 0, 0.0)), "arm.L": R(150), "arm.R": R(150), "head": R(-8), "spine": R(4)}),
+        (24, {"root": R(0, 0, 0, (0, 0, 0.3)), "arm.L": R(170), "arm.R": R(170), "head": R(-15), "spine": R(-6), "leg.L": R(20), "leg.R": R(20)}),
+        (30, {"arm.L": R(120), "arm.R": R(120), "spine": R(4)}),
+        (36, {}),
+    ], 36)
     scene.frame_set(1)
 
 def finish(name, top, sx):
@@ -182,13 +286,13 @@ def finish(name, top, sx):
     rig = make_rig(name, top, sx)
     mesh.parent = rig
     mod = mesh.modifiers.new("Armature", 'ARMATURE'); mod.object = rig
-    animate(rig, top)
+    animate(rig, top, name)
     bpy.ops.object.select_all(action='DESELECT')
     rig.select_set(True); mesh.select_set(True)
     bpy.context.view_layer.objects.active = rig
     path = os.path.join(OUT, name + ".glb")
     bpy.ops.export_scene.gltf(filepath=path, export_format='GLB', use_selection=True, export_apply=False,
-        export_animations=True, export_animation_mode='ACTIONS', export_nla_strips=True,
+        export_animations=True, export_animation_mode='NLA_TRACKS', export_nla_strips=True,
         export_yup=True, export_materials='EXPORT', export_skins=True, export_def_bones=False,
         export_frame_range=False, export_force_sampling=True, export_optimize_animation_size=False)
     tris = sum(len(p.vertices) - 2 for p in mesh.data.polygons)

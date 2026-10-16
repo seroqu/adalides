@@ -3,8 +3,8 @@ extends Node3D
 ## Mesa del draft: un mazo clicable y las cartas repartidas sobre el tablero.
 
 signal deck_clicked
-signal card_clicked(card: ChampionData)
-signal card_released(card: ChampionData, screen_pos: Vector2)
+signal card_clicked(card3d: Card3D)
+signal card_released(card3d: Card3D, screen_pos: Vector2)
 
 const COLS := 6
 const SPACING_X := 1.22
@@ -93,8 +93,8 @@ func deal(pool: Array[ChampionData]) -> void:
 		c.home = slot_position(i, pool.size())
 		c.home_rot = Vector3(-28, 0, 0)
 		add_child(c)
-		c.pressed.connect(func() -> void: card_clicked.emit(card))
-		c.released.connect(func(screen_pos: Vector2) -> void: card_released.emit(card, screen_pos))
+		c.pressed.connect(func() -> void: card_clicked.emit(c))
+		c.released.connect(func(screen_pos: Vector2) -> void: card_released.emit(c, screen_pos))
 		cards.append(c)
 		var target := slot_position(i, pool.size())
 		var tw := create_tween()
@@ -109,11 +109,14 @@ func deal(pool: Array[ChampionData]) -> void:
 
 
 ## La carta vuela hacia el fondo (la toma una IA) o hacia la cámara (la tomas tú).
-func take(card: ChampionData, by_human: bool) -> void:
-	var c := find_card(card)
+## Si se indica `which`, se lleva exactamente esa carta física; si no, una copia
+## cualquiera de esos datos (sin robar la que tengas seleccionada, si hay otra).
+func take(card: ChampionData, by_human: bool, which: Card3D = null) -> void:
+	var c := which if which != null and is_instance_valid(which) and cards.has(which) else find_card(card, not by_human)
 	if c == null:
 		return
 	cards.erase(c)
+	c.dragging = false
 	var target := Vector3(c.position.x, 2.5, -3.5) if by_human else Vector3(c.position.x, 2.2, 7.5)
 	var tw := create_tween()
 	tw.set_parallel(true)
@@ -123,25 +126,26 @@ func take(card: ChampionData, by_human: bool) -> void:
 	await tw.finished
 
 
-## Primera carta 3D de la mesa con esos datos (prefiere la seleccionada).
-func find_card(card: ChampionData) -> Card3D:
-	var found: Card3D = null
+## Una carta 3D de la mesa con esos datos: la seleccionada si la hay (o, con
+## `avoid_selected`, cualquier otra copia antes que la seleccionada).
+func find_card(card: ChampionData, avoid_selected := false) -> Card3D:
+	var selected_one: Card3D = null
+	var other: Card3D = null
 	for c in cards:
 		if c.card == card:
 			if c.is_selected():
-				return c
-			if found == null:
-				found = c
-	return found
+				selected_one = c
+			elif other == null:
+				other = c
+	if avoid_selected:
+		return other if other != null else selected_one
+	return selected_one if selected_one != null else other
 
 
-func select(card: ChampionData) -> void:
-	var first := true
+## Selecciona exactamente esa carta física (null = ninguna).
+func select(which: Card3D) -> void:
 	for c in cards:
-		var sel := c.card == card and first
-		if sel:
-			first = false
-		c.set_selected(sel)
+		c.set_selected(c == which)
 
 
 func dim_unavailable(available: Callable) -> void:
