@@ -40,7 +40,12 @@ del juego (README v1: sinergias 3/5/7, DA+DP, estertores) quedó obsoleta el 202
     │   │   ├── schedule.gd      Tabla de batallas (4 y 6 jugadores; round-robin para otros) (Schedule)
     │   │   └── game.gd          Partida: draft → mercado → alineación → batallas, IA y humano (Game)
     │   ├── data/catalog.gd      50 campeones base + 5 héroes con stats, precios y poderes (Catalog)
-    │   └── ui/main.gd           Partida jugable: tú contra 5 IA
+    │   ├── ui/main.gd           Partida jugable: tú contra 5 IA (menú, barra superior, columna lateral, mano)
+    │   ├── ui/card_view.gd      Carta 2D (mano y detalle); ui/game_theme.gd tema; ui/icons.gd iconos y texturas
+    │   └── view3d/              Tablero, fichas con modelos GLB, cartas 3D (card_3d.gd) y mesa del draft
+    ├── assets/icons/            SVG de arquetipos y elementos, marco de carta (card_frame) y dorso (card_back)
+    ├── assets/models/           GLB por arquetipo generados con tools/build_champions.py (Blender)
+    └── tools/build_champions.py Construye y anima los diez modelos en Blender
     └── tests/
         ├── test_rules.gd        Pruebas de reglas (SceneTree, sin editor)
         └── demo_game.gd         Imprime una partida completa de 6 adalides
@@ -77,6 +82,15 @@ Supuestos del código:
   Tierra maldita, Golpe rebotante, Golpe fantasma, Excavadora, Saltos continuos, Aura de puntería divina,
   Atracción letal, Matriz de protección. Tiers sin implementar: Pacto demoníaco, Frenesí canino, Ejército de la
   tumba, Amplificación arcana.
+
+## Interfaz
+
+`main.gd` construye toda la UI en código: menú principal y de pausa (`Esc` o «☰»; la pausa usa
+`get_tree().paused`, por eso la capa de UI es `PROCESS_MODE_ALWAYS` y los temporizadores usan
+`create_timer(t, false)`), barra superior (vida, Éter, racha, fase y tiempo), columna lateral con solo los controles
+de la fase, mano de cartas abajo y paneles desplegables (Adalides, Habilidades, Crónica, Cómo se juega).
+La cámara cambia por fase (`_camera_view`: tablero, draft o mercado). Las cartas 3D usan
+`assets/icons/card_frame.svg` teñido del color del elemento y `card_back.svg` como dorso.
 
 ## Cómo fluye una partida con jugador humano
 
