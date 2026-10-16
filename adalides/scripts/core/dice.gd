@@ -23,6 +23,32 @@ static func roll_d3(rng: RandomNumberGenerator) -> int:
 	return rng.randi_range(-1, 1)
 
 
+## Varias caras de d3 (los dados totales de un asalto).
+static func roll_faces(rng: RandomNumberGenerator, count: int) -> Array[int]:
+	var out: Array[int] = []
+	for _i in count:
+		out.append(roll_d3(rng))
+	return out
+
+
+const FACE_LABELS := { -1: "−", 0: "○", 1: "+" }
+
+
+static func face_label(face: int) -> String:
+	return FACE_LABELS.get(face, "?")
+
+
+## Caras que hacen falta para lograr un resultado: { cara: cantidad }.
+static func faces_for(d: Rules.Die) -> Dictionary:
+	match d:
+		Rules.Die.CRITICO: return { 1: 2 }
+		Rules.Die.ACIERTO: return { 1: 1 }
+		Rules.Die.NEUTRO: return { 0: 1 }
+		Rules.Die.FALLO: return { -1: 1 }
+		Rules.Die.PIFIA: return { -1: 2 }
+	return {}
+
+
 ## Tirada de poder: dos d3 sumados → Rules.Die.
 static func roll_die(rng: RandomNumberGenerator) -> Rules.Die:
 	return classify_sum(roll_d3(rng) + roll_d3(rng))

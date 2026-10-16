@@ -46,6 +46,22 @@ func test_dice() -> void:
 	check(Dice.worsen(Rules.Die.CRITICO) == Rules.Die.ACIERTO and Dice.worsen(Rules.Die.ACIERTO) == Rules.Die.NEUTRO
 		and Dice.worsen(Rules.Die.PIFIA) == Rules.Die.PIFIA, "Hackeo empeora un rango")
 	check(not Dice.meets(Rules.Die.NEUTRO, [Rules.Die.ACIERTO, Rules.Die.CRITICO]) and Dice.meets(Rules.Die.NEUTRO, []), "el neutro solo activa poderes sin requisito")
+	# Reparto de caras entre poderes.
+	var bola := Champion.new(Catalog.by_id("mago_fuego")) # requiere + o ++
+	var garras := Champion.new(Catalog.by_id("salvaje_fuego")) # requiere ++
+	var viento := Champion.new(Catalog.by_id("defensor_aire")) # requiere -
+	var fundir := Champion.new(Catalog.by_id("muerto_fuego")) # sin requisito
+	var all: Array[Champion] = [bola, garras, viento, fundir]
+	var plan := Battle.plan_assignment([1, 1, 1, -1, 0], all)
+	check(plan.get(garras, -1) == Rules.Die.CRITICO, "dos + hacen un ++ para Garras ígneas")
+	check(plan.get(bola, -1) == Rules.Die.ACIERTO, "Bola de fuego se activa con un solo +")
+	check(plan.get(viento, -1) == Rules.Die.FALLO, "un − activa Viento arrebatado")
+	check(plan.get(fundir, -1) == Rules.Die.NEUTRO, "la cara neutra activa un poder sin requisito")
+	var one: Array[Champion] = [garras]
+	check(Battle.plan_assignment([1], one).is_empty(), "con un solo + no hay ++")
+	var two: Array[Champion] = [bola, garras]
+	var plan2 := Battle.plan_assignment([1, 1], two)
+	check(plan2.size() == 1 and plan2.values()[0] == Rules.Die.CRITICO, "con dos + prioriza al campeón más fuerte")
 	check(Dice.meets(Rules.Die.ACIERTO, [Rules.Die.ACIERTO, Rules.Die.CRITICO]), "+ cumple un requisito de +/++")
 	check(not Dice.meets(Rules.Die.FALLO, [Rules.Die.CRITICO]), "- no cumple ++")
 	check(Dice.d20_to_cell(15) == 15 and Dice.d20_to_cell(16) == -1, "d20 señala casillas 1..15")

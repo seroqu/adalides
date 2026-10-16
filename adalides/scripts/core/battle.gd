@@ -18,7 +18,7 @@ var battle_number: int = 1 # Batallas realizadas hasta ahora (incluida esta).
 var adalids: Array[Adalid] = []
 var elem_tiers: Array[Dictionary] = [{}, {}]
 var arch_tiers: Array[Dictionary] = [{}, {}]
-var dice: Array = [[], []] # Resultados (Rules.Die) lanzados este asalto por lado.
+var dice: Array = [[], []] # Caras de d3 (−1/0/+1) lanzadas este asalto por lado.
 ## Eventos del asalto en curso, para animarlos: { "type": ..., ... }.
 var events: Array[Dictionary] = []
 var eter_produced: Array[int] = [0, 0]
@@ -169,57 +169,77 @@ func begin_round() -> bool:
 		for ch in board.champions(side):
 			ch.reset_for_round()
 		var rolled: Array = []
-		for d0 in Dice.roll_dice(rng, adalids[side].dice_count()):
-			var d: Rules.Die = d0
+		for f in Dice.roll_faces(rng, adalids[side].dice_count()):
+			var face: int = f
 			if atier(1 - side, A.ROBOT) >= 3:
-				d = Dice.worsen(d) # Hackeo del rival.
-			rolled.append(d)
+				face = maxi(face - 1, -1) # Hackeo del rival: cada cara empeora un paso.
+			rolled.append(face)
 		dice[side] = rolled
 		var labels: PackedStringArray = []
-		for d in rolled:
-			labels.append(Rules.die_label(d))
-		log_line("%s lanza: %s" % [adalids[side].display_name, " ".join(labels)])
+		for f in rolled:
+			labels.append(Dice.face_label(f))
+		log_line("%s lanza %d dados: %s" % [adalids[side].display_name, rolled.size(), " ".join(labels)])
 	return true
 
 
-## IA: asigna cada dado al campeón cuyo poder lo acepte, de mejor a peor dado.
-## Devuelve { Champion: Rules.Die }.
+## Reparte las caras lanzadas entre los campeones con poder. Devuelve { Champion: Rules.Die }.
 func auto_assign(side: int) -> Dictionary:
-	var pool: Array = dice[side].duplicate()
-	pool.sort()
-	pool.reverse()
+	var candidates: Array[Champion] = []
+	for ch in board.champions(side):
+		if not ch.can_act() or not ch.data.has_power() or not Powers.is_implemented(ch.data.id):
+			continue
+		if ch.data.id == &"salvaje_asesino" and round_no < Rules.ROUNDS_PER_BATTLE:
+			continue # Frenesí solo sirve en el último asalto.
+		candidates.append(ch)
+	return plan_assignment(dice[side], candidates)
+
+
+## Con las caras disponibles, activa el mayor número de poderes, empezando por
+## los campeones más fuertes y gastando lo mínimo en cada uno.
+static func plan_assignment(faces: Array, champions: Array[Champion]) -> Dictionary:
+	var pool := { -1: 0, 0: 0, 1: 0 }
+	for f in faces:
+		pool[f] = pool.get(f, 0) + 1
+	var sorted := champions.duplicate()
+	sorted.sort_custom(func(x: Champion, y: Champion) -> bool: return x.attack() + x.max_hp() > y.attack() + y.max_hp())
 	var assigned := {}
-	var candidates := board.champions(side)
-	candidates.sort_custom(func(x: Champion, y: Champion) -> bool: return x.attack() + x.max_hp() > y.attack() + y.max_hp())
-	for d in pool:
-		for ch in candidates:
-			if assigned.has(ch) or not ch.can_act() or not ch.data.has_power():
-				continue
-			if not Dice.meets(d, ch.data.power_requirement()):
-				continue
-			if not Powers.is_implemented(ch.data.id):
-				continue # No gastar la acción en un poder que aún no hace nada.
-			# Frenesí solo sirve en el último asalto.
-			if ch.data.id == &"salvaje_asesino" and round_no < Rules.ROUNDS_PER_BATTLE:
-				continue
-			assigned[ch] = d
-			break
+	for ch in sorted:
+		var options: Array = ch.data.power_requirement()
+		if options.is_empty():
+			options = [Rules.Die.NEUTRO, Rules.Die.ACIERTO, Rules.Die.FALLO, Rules.Die.CRITICO, Rules.Die.PIFIA]
+		# Opciones de más barata a más cara (un dado antes que dos).
+		var ranked := options.duplicate()
+		ranked.sort_custom(func(a: int, b: int) -> bool: return _die_cost(a) < _die_cost(b))
+		for d in ranked:
+			var need := Dice.faces_for(d)
+			var ok := true
+			for face in need:
+				if pool.get(face, 0) < need[face]:
+					ok = false
+			if ok:
+				for face in need:
+					pool[face] -= need[face]
+				assigned[ch] = d
+				break
 	return assigned
+
+
+static func _die_cost(d: int) -> int:
+	var total := 0
+	for face in Dice.faces_for(d).values():
+		total += face
+	return total
 
 
 ## Resuelve el asalto. Sin argumento, los dados se asignan solos en ambos lados.
 func commit_round(assign_by_side: Array = []) -> void:
 	for side in 2:
 		var assigned: Dictionary = assign_by_side[side] if assign_by_side.size() > side else auto_assign(side)
-		var used := []
 		for ch in assigned:
 			var d: int = assigned[ch]
-			if not dice[side].has(d) or used.count(d) >= dice[side].count(d):
-				continue
 			if not (ch is Champion) or ch.side != side or not ch.alive:
 				continue
 			ch.die = d
-			used.append(d)
 			log_line("  %s: %s saca %s para %s." % [adalids[side].display_name, ch.data.display_name,
 				Rules.die_label(d), ch.data.power.get("name", "?")])
 	_phase_tier_hi()

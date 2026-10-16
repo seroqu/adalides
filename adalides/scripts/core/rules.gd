@@ -41,10 +41,13 @@ const AFI_BY_COPIES := { 1: 0, 2: 0, 3: 1, 4: 2 } # 3.ª copia AFI 1, 4.ª AFI 2
 const MAX_COPIES := 4
 
 # --- Dados ---
-## Dados de poder: dos dados de 3 caras (−, neutra, +) por tirada. La suma da
-## el resultado: −2 = pifia (--), −1 = fallo (-), 0 = neutro, +1 = acierto (+),
-## +2 = crítico (++). Decisión del autor: todo ocurre internamente, el jugador
-## no asigna dados.
+## Dados de poder: la pista "Dados" del tablero personal es el TOTAL de dados de
+## 3 caras (−, neutra, +) que se lanzan por asalto. Los dados se reparten entre
+## los poderes: un + activa un poder de "+", dos + juntos hacen un "++", un −
+## activa un poder de "-", dos − un "--", y una cara neutra activa poderes sin
+## requisito. Decisión del autor: todo ocurre internamente, el jugador no asigna.
+## Las comprobaciones sueltas de las habilidades ("lanza un dado; con ++/+/-")
+## usan dos d3 sumados (SUPUESTO).
 const DICE_SIDES := 6 # d6 auxiliar (columnas/filas).
 enum Die { PIFIA, FALLO, NEUTRO, ACIERTO, CRITICO } # -- / - / ○ / + / ++
 const DIE_LABELS := { Die.PIFIA: "--", Die.FALLO: "-", Die.NEUTRO: "○", Die.ACIERTO: "+", Die.CRITICO: "++" }

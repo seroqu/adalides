@@ -433,7 +433,7 @@ func _build_battle_panel() -> Control:
 	box.add_child(battle_title)
 	battle_status = _label("")
 	box.add_child(battle_status)
-	box.add_child(_label("Los dados de poder (dos caras de tres: −, neutra, +) se lanzan solos para cada campeón. Observa el tablero: los movimientos, el daño y los poderes se animan."))
+	box.add_child(_label("Cada asalto lanzas tantos dados de tres caras (−, neutra, +) como marque tu pista de Dados; el motor los reparte entre los poderes: un + activa un poder de +, dos + hacen un ++. Observa el tablero: movimientos, daño y poderes se animan."))
 	var row := HBoxContainer.new()
 	box.add_child(row)
 	pause_button = Button.new()

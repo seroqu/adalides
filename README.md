@@ -38,21 +38,22 @@ en pie es el nuevo demiurgo. Si los dos últimos caen a la vez, gana el Demiurgo
 
 ## Dados
 
-Los dados de poder son **dados de tres caras**: una cara `−`, una neutra y una `+`. Cada tirada lanza **dos**
-y se suman (*Decisión del autor: todo ocurre internamente; el jugador no asigna dados*):
+Los dados de poder son **dados de tres caras**: `−`, neutra (`○`) y `+`. La pista **Dados** del tablero personal
+(1 → 6) es el **total de dados que se lanzan por asalto**. Los dados se reparten entre los poderes de los campeones
+(*Decisión del autor: todo ocurre internamente; el jugador no asigna dados*):
 
-| Suma | Símbolo | Nombre | Probabilidad |
-|------|---------|--------|--------------|
-| −2 | `--` | Pifia | 1/9 |
-| −1 | `-` | Fallo | 2/9 |
-| 0 | `○` | Neutro | 3/9 |
-| +1 | `+` | Acierto | 2/9 |
-| +2 | `++` | Crítico | 1/9 |
+| Resultado | Dados que lo forman |
+|-----------|---------------------|
+| `--` Pifia | dos caras `−` |
+| `-` Fallo | una cara `−` |
+| `○` Neutro | una cara neutra (solo activa poderes sin requisito) |
+| `+` Acierto | una cara `+` |
+| `++` Crítico | dos caras `+` |
 
-Un poder con requisito (`++`, `+ o ++`, `-`…) solo se activa si la suma coincide; un poder sin requisito se activa con
-cualquier resultado, incluido el neutro. Cada asalto el adalid lanza tantos dados como marque su pista de **Dados**
-y el motor los reparte entre los campeones cuyos poderes los acepten (los activos sustituyen al ataque básico,
-los pasivos se suman). El *Trueno* de la Tormenta cae con un `++`.
+Un poder con requisito (`++`, `+ o ++`, `-`…) se activa gastando las caras que lo forman; el motor activa el mayor
+número de poderes posible, empezando por los campeones más fuertes y gastando lo mínimo en cada uno. Los poderes
+activos sustituyen al ataque básico; los pasivos se suman. Las comprobaciones sueltas de las habilidades ("lanza un
+dado; con ++/+/-") tiran dos d3 y suman (*supuesto*). El *Trueno* de la Tormenta cae con un `++`.
 
 Algunas habilidades usan un **d20** para señalar casillas (1–15; 16–20 no señalan nada) y un d6 para columnas o filas.
 
