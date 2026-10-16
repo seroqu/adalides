@@ -68,9 +68,12 @@ func setup(ch: Champion, p_side: int) -> void:
 		_elem.shaded = false
 		add_child(_elem)
 	# Barra de vida: fondo, estela (daño reciente) y relleno, ancladas a la izquierda.
-	_bar_bg = _bar_quad(Color(0.05, 0.05, 0.08, 0.9), BAR_W + 0.06, BAR_H + 0.05, 0)
-	_bar_ghost = _bar_quad(Color(1.0, 0.85, 0.3, 1.0), BAR_W, BAR_H, 1)
-	_bar_fill = _bar_quad(Color(0.4, 0.9, 0.4, 1.0), BAR_W, BAR_H, 2)
+	var border := Color(0.25, 0.55, 1.0) if side == 0 else Color(1.0, 0.3, 0.28)
+	_bar_bg = _bar_quad(border, BAR_W + 0.08, BAR_H + 0.07, 0)
+	var inner := _bar_quad(Color(0.05, 0.05, 0.08, 1.0), BAR_W + 0.02, BAR_H + 0.02, 1)
+	inner.position.x -= 0.01
+	_bar_ghost = _bar_quad(Color(1.0, 0.85, 0.3, 1.0), BAR_W, BAR_H, 2)
+	_bar_fill = _bar_quad(Color(0.4, 0.9, 0.4, 1.0), BAR_W, BAR_H, 3)
 	_fill_mat = _bar_fill.material_override
 	_status = Label3D.new()
 	_status.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -101,7 +104,7 @@ func _bar_quad(color: Color, w: float, h: float, priority: int) -> MeshInstance3
 	mat.no_depth_test = true
 	mat.render_priority = priority
 	m.material_override = mat
-	m.position = Vector3(BAR_W / 2.0, 1.08, 0)
+	m.position = Vector3(w / 2.0, 1.08, 0)
 	add_child(m)
 	return m
 

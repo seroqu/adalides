@@ -6,7 +6,9 @@ extends Node3D
 const NAMES: PackedStringArray = ["Tú", "Bruno", "Carla", "Dani", "Eva", "Fito"]
 const AUTO_ROUND_SECONDS := 2.0
 const MARKET_SECONDS := 60
+const LINEUP_SECONDS := 30
 const DRAG_THRESHOLD := 8.0
+const HAND_SCALE := 0.68
 
 var game: Game
 var board3d: Board3D
@@ -38,9 +40,14 @@ var take_button: Button
 var skip_button: Button
 var buy_button: Button
 var market_detail: VBoxContainer
-var market_timer_label: Label
-var market_left: int = 0
-var market_timer: Timer
+var phase_left: float = 0.0
+var phase_total: float = 1.0
+var phase_bars: Dictionary = {} # State → ProgressBar
+var phase_labels: Dictionary = {} # State → Label
+var log_panel: PanelContainer
+var log_toggle: Button
+var hand_panel: Control
+var hand_box: HBoxContainer
 # Habilidades
 var skills_panel: PanelContainer
 var skills_box: VBoxContainer
@@ -48,11 +55,8 @@ var skills_box: VBoxContainer
 var upgrade_buttons: Dictionary = {}
 var refresh_button: Button
 var sell_button: Button
-var cuartel_box: HFlowContainer
-var cuartel_scroll: ScrollContainer
 var selected_cuartel: Champion = null
 # Alineación
-var lineup_box: HFlowContainer
 var lineup: Dictionary = {}
 var lineup_info: Label
 var pending_card: Champion = null
@@ -97,6 +101,7 @@ func _build_world() -> void:
 	var center := Vector3(Board3D.world_x(2), 0, (Board3D.world_z(0) + Board3D.world_z(5)) / 2.0)
 	camera.fov = 50
 	camera.h_offset = -0.35
+	camera.v_offset = -0.75 # El tablero sube para dejar sitio a la mano de cartas.
 	add_child(camera)
 	camera.look_at_from_position(center + Vector3(0, 9.2, -5.4), center + Vector3(0, 0, 0.2), Vector3.UP)
 
@@ -112,13 +117,12 @@ func _build_ui() -> void:
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ui.add_child(root)
 
-	# Panel izquierdo: título, clasificación y crónica.
+	# Panel izquierdo: título y clasificación (compacto). La crónica va aparte y se pliega.
 	var left := PanelContainer.new()
-	left.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
+	left.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
 	left.offset_left = 8
 	left.offset_right = 340
 	left.offset_top = 8
-	left.offset_bottom = -8
 	root.add_child(left)
 	var lv := VBoxContainer.new()
 	lv.add_theme_constant_override("separation", 6)
@@ -144,11 +148,22 @@ func _build_ui() -> void:
 	standings.scroll_active = false
 	standings.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
 	lv.add_child(standings)
-	lv.add_child(GameTheme.heading("Crónica"))
+	log_toggle = Button.new()
+	log_toggle.text = "Crónica ▸"
+	log_toggle.pressed.connect(_toggle_log)
+	lv.add_child(log_toggle)
+	log_panel = PanelContainer.new()
+	log_panel.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
+	log_panel.offset_left = 8
+	log_panel.offset_right = 340
+	log_panel.offset_top = 268
+	log_panel.offset_bottom = -8
+	log_panel.visible = false
+	root.add_child(log_panel)
 	log_label = RichTextLabel.new()
 	log_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	log_label.scroll_following = true
-	lv.add_child(log_label)
+	log_panel.add_child(log_label)
 
 	# Cabecera: fase, HUD y ayuda.
 	var head := PanelContainer.new()
@@ -278,10 +293,89 @@ func _build_ui() -> void:
 	dp.add_child(drag_preview_label)
 	fx_layer.add_child(drag_preview)
 
-	market_timer = Timer.new()
-	market_timer.wait_time = 1.0
-	market_timer.timeout.connect(_on_market_tick)
-	add_child(market_timer)
+	# Mano: las cartas del cuartel en la parte baja; se agrandan al pasar el ratón.
+	hand_panel = Control.new()
+	hand_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	hand_panel.offset_left = 352
+	hand_panel.offset_right = -468
+	hand_panel.offset_top = -150
+	hand_panel.offset_bottom = -4
+	hand_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hand_panel.visible = false
+	root.add_child(hand_panel)
+	hand_box = HBoxContainer.new()
+	hand_box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	hand_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	hand_box.add_theme_constant_override("separation", -34)
+	hand_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hand_panel.add_child(hand_box)
+
+
+func _toggle_log() -> void:
+	log_panel.visible = not log_panel.visible
+	log_toggle.text = "Crónica ▾" if log_panel.visible else "Crónica ▸"
+
+
+## Barra y etiqueta de tiempo de una fase, al principio de su panel.
+func _phase_timer_row(state: int, box: VBoxContainer) -> void:
+	var row := HBoxContainer.new()
+	box.add_child(row)
+	var bar := ProgressBar.new()
+	bar.min_value = 0
+	bar.max_value = 1
+	bar.value = 1
+	bar.show_percentage = false
+	bar.custom_minimum_size = Vector2(0, 14)
+	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = GameTheme.GOLD
+	fill.set_corner_radius_all(4)
+	bar.add_theme_stylebox_override("fill", fill)
+	var bg := StyleBoxFlat.new()
+	bg.bg_color = Color(0.1, 0.09, 0.14)
+	bg.border_color = GameTheme.GOLD_DIM
+	bg.set_border_width_all(1)
+	bg.set_corner_radius_all(4)
+	bar.add_theme_stylebox_override("background", bg)
+	row.add_child(bar)
+	var l := GameTheme.heading("⏱ 0 s")
+	l.autowrap_mode = TextServer.AUTOWRAP_OFF
+	l.custom_minimum_size.x = 64
+	row.add_child(l)
+	phase_bars[state] = bar
+	phase_labels[state] = l
+
+
+func _start_phase_timer(seconds: float) -> void:
+	phase_total = seconds
+	phase_left = seconds
+	_update_phase_timer()
+
+
+func _update_phase_timer() -> void:
+	var st := game.state
+	if not phase_bars.has(st):
+		return
+	var bar: ProgressBar = phase_bars[st]
+	bar.value = clampf(phase_left / phase_total, 0.0, 1.0)
+	var fill: StyleBoxFlat = bar.get_theme_stylebox("fill")
+	fill.bg_color = Color(1, 0.4, 0.3) if phase_left <= 10 else GameTheme.GOLD
+	var l: Label = phase_labels[st]
+	l.text = "⏱ %d s" % ceili(phase_left)
+
+
+func _process(delta: float) -> void:
+	if game == null or not phase_bars.has(game.state) or phase_left <= 0.0:
+		return
+	phase_left -= delta
+	_update_phase_timer()
+	if phase_left <= 0.0:
+		phase_left = 0.0
+		if game.state == Game.State.MARKET:
+			_finish_market()
+		elif game.state == Game.State.LINEUP:
+			_on_lineup_done(true)
 
 
 func _tier_label(preset: int, y: float) -> Label:
@@ -339,15 +433,8 @@ func _build_draft_panel() -> Control:
 
 func _build_market_panel() -> Control:
 	var box := VBoxContainer.new()
-	var trow := HBoxContainer.new()
-	box.add_child(trow)
-	var th := GameTheme.heading("Tablero personal")
-	th.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	trow.add_child(th)
-	market_timer_label = GameTheme.heading("⏱ 60 s")
-	market_timer_label.autowrap_mode = TextServer.AUTOWRAP_OFF
-	market_timer_label.custom_minimum_size.x = 70
-	trow.add_child(market_timer_label)
+	_phase_timer_row(Game.State.MARKET, box)
+	box.add_child(GameTheme.heading("Tablero personal"))
 	var row := HFlowContainer.new()
 	row.add_theme_constant_override("h_separation", 6)
 	row.add_theme_constant_override("v_separation", 6)
@@ -360,35 +447,32 @@ func _build_market_panel() -> Control:
 		row.add_child(b)
 		upgrade_buttons[track] = b
 	box.add_child(GameTheme.heading("Mercado"))
-	box.add_child(_label("Pulsa una carta de la mesa y «Comprar», o arrástrala hasta el cuartel."))
+	box.add_child(_label("Pulsa una carta de la mesa y «Comprar», o arrástrala hasta este panel. Tu mano (abajo) es tu cuartel."))
+	refresh_button = Button.new()
+	refresh_button.text = "⟳ Refrescar el mercado (%d ◆)" % Rules.MARKET_REFRESH_COST
+	refresh_button.custom_minimum_size = Vector2(0, 46)
+	refresh_button.add_theme_font_size_override("font_size", 17)
+	refresh_button.pressed.connect(_on_refresh_market)
+	box.add_child(refresh_button)
 	market_detail = VBoxContainer.new()
+	market_detail.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	box.add_child(market_detail)
-	var mrow := HBoxContainer.new()
-	box.add_child(mrow)
 	buy_button = Button.new()
 	buy_button.text = "Comprar"
 	buy_button.disabled = true
+	buy_button.custom_minimum_size = Vector2(0, 40)
 	buy_button.pressed.connect(_on_buy_card)
 	GameTheme.primary_button(buy_button)
-	mrow.add_child(buy_button)
-	refresh_button = Button.new()
-	refresh_button.text = "Refrescar (%d ◆)" % Rules.MARKET_REFRESH_COST
-	refresh_button.pressed.connect(_on_refresh_market)
-	mrow.add_child(refresh_button)
-	box.add_child(GameTheme.heading("Cuartel"))
-	cuartel_box = HFlowContainer.new()
-	cuartel_box.add_theme_constant_override("h_separation", 6)
-	cuartel_box.add_theme_constant_override("v_separation", 6)
-	cuartel_scroll = _scroll(cuartel_box)
-	box.add_child(cuartel_scroll)
+	box.add_child(buy_button)
 	var brow := HBoxContainer.new()
 	box.add_child(brow)
 	sell_button = Button.new()
-	sell_button.text = "Vender seleccionada"
+	sell_button.text = "Vender de la mano"
 	sell_button.pressed.connect(_on_sell)
 	brow.add_child(sell_button)
 	var done := Button.new()
 	done.text = "Terminar compras →"
+	done.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	GameTheme.primary_button(done)
 	done.pressed.connect(_finish_market)
 	brow.add_child(done)
@@ -397,14 +481,14 @@ func _build_market_panel() -> Control:
 
 func _build_lineup_panel() -> Control:
 	var box := VBoxContainer.new()
+	_phase_timer_row(Game.State.LINEUP, box)
 	box.add_child(GameTheme.heading("Alineación"))
-	box.add_child(_label("Arrastra una carta del cuartel a una casilla de tu lado (o púlsala y luego pulsa la casilla). Arrastra una ficha para moverla; suéltala fuera para quitarla. La fila junto a la línea dorada es el frente."))
+	box.add_child(_label("Arrastra una carta de tu mano (abajo) a una casilla de tu lado, o púlsala y luego pulsa la casilla. Arrastra una ficha para moverla; suéltala fuera para quitarla. La fila junto a la línea dorada es el frente. Si se acaba el tiempo, la alineación actual (o la automática) va a la batalla."))
 	lineup_info = _label("")
 	box.add_child(lineup_info)
-	lineup_box = HFlowContainer.new()
-	lineup_box.add_theme_constant_override("h_separation", 6)
-	lineup_box.add_theme_constant_override("v_separation", 6)
-	box.add_child(_scroll(lineup_box))
+	var spacer := Control.new()
+	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(spacer)
 	var buttons := HBoxContainer.new()
 	box.add_child(buttons)
 	var auto := Button.new()
@@ -422,7 +506,7 @@ func _build_lineup_panel() -> Control:
 	var go := Button.new()
 	go.text = "¡A la batalla! →"
 	GameTheme.primary_button(go)
-	go.pressed.connect(_on_lineup_done)
+	go.pressed.connect(func() -> void: _on_lineup_done(false))
 	buttons.add_child(go)
 	return box
 
@@ -543,7 +627,6 @@ func _new_game() -> void:
 	board3d.clear_pieces()
 	table.clear()
 	table.visible = false
-	market_timer.stop()
 	_next_cycle()
 
 
@@ -557,8 +640,8 @@ func _enter_state() -> void:
 	selected_card = null
 	drag.clear()
 	drag_preview.visible = false
-	if game.state != Game.State.MARKET:
-		market_timer.stop()
+	phase_left = 0.0
+	hand_panel.visible = game.state in [Game.State.MARKET, Game.State.LINEUP]
 	if game.state != Game.State.DRAFT and game.state != Game.State.MARKET:
 		table.clear()
 		table.visible = false
@@ -570,13 +653,13 @@ func _enter_state() -> void:
 			_refresh_draft()
 		Game.State.MARKET:
 			board3d.clear_pieces()
-			market_left = MARKET_SECONDS
-			market_timer.start()
+			_start_phase_timer(MARKET_SECONDS)
 			_refresh_market()
 			_deal_market()
 		Game.State.LINEUP:
 			lineup = Game.auto_lineup(game.human)
 			pending_card = null
+			_start_phase_timer(LINEUP_SECONDS)
 			_refresh_lineup()
 		Game.State.BATTLE:
 			battle_paused = false
@@ -721,9 +804,7 @@ func _deal_market() -> void:
 
 func _refresh_market() -> void:
 	var h := game.human
-	hint.text = "Compra con el tiempo que marca el reloj; al acabarse pasas a la alineación."
-	market_timer_label.text = "⏱ %d s" % market_left
-	market_timer_label.add_theme_color_override("font_color", Color(1, 0.4, 0.3) if market_left <= 10 else GameTheme.GOLD)
+	hint.text = "Compra con el tiempo que marca la barra; al acabarse pasas a la alineación."
 	var names := { Adalid.Track.CUARTEL: "Cuartel", Adalid.Track.BATTLE: "En batalla", Adalid.Track.DICE: "Dados" }
 	for track in upgrade_buttons:
 		var b: Button = upgrade_buttons[track]
@@ -741,38 +822,70 @@ func _refresh_market() -> void:
 	refresh_button.disabled = table_busy or not h.can_pay(Rules.MARKET_REFRESH_COST)
 	if table.dealt:
 		table.dim_unavailable(func(card: ChampionData) -> bool: return h.can_add(card) and h.can_pay(card.cost))
-	for c in cuartel_box.get_children():
-		c.queue_free()
 	if not h.cuartel.has(selected_cuartel):
 		selected_cuartel = null
-	for ch in h.cuartel:
-		var cv := CardView.new()
-		cv.setup(ch.data, ch, "vender por %d ◆" % h.sell_value(ch))
-		cv.selected = ch == selected_cuartel
-		cv.pressed.connect(func() -> void:
-			selected_cuartel = ch
-			_refresh_market())
-		cuartel_box.add_child(cv)
+	_refresh_hand()
 	sell_button.disabled = selected_cuartel == null
+	sell_button.text = "Vender de la mano" if selected_cuartel == null else "Vender %s (%d ◆)" % [selected_cuartel.data.display_name, h.sell_value(selected_cuartel)]
 	_update_deck_label()
 	_refresh()
 
 
-func _on_market_tick() -> void:
-	if game.state != Game.State.MARKET:
-		market_timer.stop()
-		return
-	market_left -= 1
-	market_timer_label.text = "⏱ %d s" % market_left
-	market_timer_label.add_theme_color_override("font_color", Color(1, 0.4, 0.3) if market_left <= 10 else GameTheme.GOLD)
-	if market_left <= 0:
-		_finish_market()
+## La mano: cartas del cuartel abajo, pequeñas; la que tiene el ratón encima se agranda.
+func _refresh_hand() -> void:
+	for c in hand_box.get_children():
+		c.queue_free()
+	var h := game.human
+	for ch in h.cuartel:
+		var cv := CardView.new()
+		var extra := ""
+		if game.state == Game.State.MARKET:
+			extra = "vender por %d ◆" % h.sell_value(ch)
+		elif game.state == Game.State.LINEUP:
+			extra = "en el tablero ✔" if lineup.values().has(ch) else "en la mano"
+		cv.setup(ch.data, ch, extra)
+		cv.selected = ch == selected_cuartel or ch == pending_card
+		cv.size_flags_vertical = Control.SIZE_SHRINK_END
+		cv.pivot_offset = Vector2(68, 150)
+		cv.scale = Vector2(HAND_SCALE, HAND_SCALE)
+		cv.hovered.connect(_on_hand_hover)
+		cv.unhovered.connect(_on_hand_unhover)
+		cv.pressed.connect(func() -> void:
+			if game.state == Game.State.MARKET:
+				selected_cuartel = ch
+				_refresh_market()
+			elif game.state == Game.State.LINEUP:
+				pending_card = null if pending_card == ch else ch
+				_refresh_lineup()
+				if pending_card != null:
+					_begin_drag({ "kind": "cuartel_card", "champion": ch }, Icons.archetype(ch.data.archetype), ch.data.display_name))
+		hand_box.add_child(cv)
+	await get_tree().process_frame
+	for cv in hand_box.get_children():
+		if is_instance_valid(cv):
+			cv.pivot_offset = Vector2(cv.size.x / 2.0, cv.size.y)
+
+
+func _on_hand_hover(cv: CardView) -> void:
+	cv.z_index = 10
+	var tw := create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(cv, "scale", Vector2(1.05, 1.05), 0.12).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(cv, "position:y", cv.position.y - 24, 0.12)
+
+
+func _on_hand_unhover(cv: CardView) -> void:
+	cv.z_index = 0
+	var tw := create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(cv, "scale", Vector2(HAND_SCALE, HAND_SCALE), 0.12).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(cv, "position:y", cv.position.y + 24, 0.12)
 
 
 func _finish_market() -> void:
 	if game.state != Game.State.MARKET:
 		return
-	market_timer.stop()
+	phase_left = 0.0
 	if table_busy:
 		await get_tree().create_timer(0.6).timeout
 	game.finish_market()
@@ -839,18 +952,7 @@ func _place_in_lineup(ch: Champion, key: Vector2i) -> void:
 
 func _refresh_lineup() -> void:
 	hint.text = "Coloca hasta %d campeones en tu lado del tablero." % game.human.battle_size()
-	for c in lineup_box.get_children():
-		c.queue_free()
-	for ch in game.human.cuartel:
-		var cv := CardView.new()
-		cv.setup(ch.data, ch, "en el tablero ✔" if lineup.values().has(ch) else "")
-		cv.selected = ch == pending_card
-		cv.pressed.connect(func() -> void:
-			pending_card = null if pending_card == ch else ch
-			_refresh_lineup()
-			if pending_card != null:
-				_begin_drag({ "kind": "cuartel_card", "champion": ch }, Icons.archetype(ch.data.archetype), ch.data.display_name))
-		lineup_box.add_child(cv)
+	_refresh_hand()
 	board3d.sync(Board3D.lineup_to_cells(lineup, 0), false)
 	var free: Array[Vector2i] = []
 	if pending_card != null:
@@ -868,11 +970,16 @@ func _refresh_lineup() -> void:
 	_refresh()
 
 
-func _on_lineup_done() -> void:
+func _on_lineup_done(by_timeout: bool) -> void:
+	if game.state != Game.State.LINEUP:
+		return
 	var errors := game.set_lineup(lineup)
 	if not errors.is_empty():
-		lineup_info.text = "\n".join(errors)
-		return
+		if by_timeout:
+			game.set_lineup(Game.auto_lineup(game.human))
+		else:
+			lineup_info.text = "\n".join(errors)
+			return
 	_enter_state()
 
 
@@ -1226,7 +1333,7 @@ func _screenshot_tour(dir: String) -> void:
 		_refresh_lineup()
 		await _snap(dir.path_join("3_alineacion.png"))
 		pending_card = null
-		_on_lineup_done()
+		_on_lineup_done(false)
 	if game.state == Game.State.BATTLE:
 		_toggle_pause()
 		await _snap(dir.path_join("4_batalla.png"))

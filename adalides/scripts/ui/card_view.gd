@@ -4,6 +4,8 @@ extends PanelContainer
 ## nombre, ataque/vida/coste y poder. Emite `pressed` al pulsarla.
 
 signal pressed
+signal hovered(card_view: CardView)
+signal unhovered(card_view: CardView)
 
 var card: ChampionData
 var champion: Champion
@@ -122,3 +124,8 @@ func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		accept_event()
 		pressed.emit()
+
+
+func _ready() -> void:
+	mouse_entered.connect(func() -> void: hovered.emit(self))
+	mouse_exited.connect(func() -> void: unhovered.emit(self))
