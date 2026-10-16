@@ -2,8 +2,8 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bcldvfxinr82x"
-path="res://.godot/imported/mago_Color_a755db86-1143-4421-a174-00084fe7c53c.jpg-99fe7d8f4e953e26fdb1b78e687c50eb.ctex"
+uid="uid://bs8d5boc2nlrp"
+path="res://.godot/imported/mago_tripo_Color_a755db86-1143-4421-a174-00084fe7c53c.jpg-b9fd9b4006c3dadad61547178ba67a95.ctex"
 metadata={
 "vram_texture": false
 }
@@ -13,8 +13,8 @@ generator_parameters={
 
 [deps]
 
-source_file="res://assets/models/mago_Color_a755db86-1143-4421-a174-00084fe7c53c.jpg"
-dest_files=["res://.godot/imported/mago_Color_a755db86-1143-4421-a174-00084fe7c53c.jpg-99fe7d8f4e953e26fdb1b78e687c50eb.ctex"]
+source_file="res://assets/models/mago_tripo_Color_a755db86-1143-4421-a174-00084fe7c53c.jpg"
+dest_files=["res://.godot/imported/mago_tripo_Color_a755db86-1143-4421-a174-00084fe7c53c.jpg-b9fd9b4006c3dadad61547178ba67a95.ctex"]
 
 [params]
 

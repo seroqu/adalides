@@ -16,7 +16,8 @@ se buscan por nombre: `idle`, `attack`, `hit`, `death` (sin distinguir mayúscul
 
 ## Modelos actuales
 
-Los diez arquetipos están modelados con geometría procedural desde Blender (vía el puente de Higgsfield,
-sin gastar créditos): `scripts` no los genera; se construyeron con `bpy` y se exportaron como GLB de ~50–70 KB.
-`mago.glb` es el generado con Tripo (Higgsfield); `mago_lowpoly_alt.glb` es la versión procedural a juego con
-los demás: renómbrala a `mago.glb` si prefieres uniformidad.
+Los diez arquetipos se construyen con `tools/build_champions.py` dentro de Blender (geometría con bisel y
+sombreado suave, esqueleto de 8 huesos y clips `idle`, `attack`, `hit` y `death`; GLB de ~180–270 KB).
+Para regenerarlos: abre Blender con el add-on de Higgsfield conectado y ejecuta el script (o
+`blender -b -P tools/build_champions.py`). `mago_tripo.glb` es el modelo generado con Tripo (sin esqueleto),
+guardado como referencia.

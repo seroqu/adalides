@@ -53,6 +53,8 @@ var skills_panel: PanelContainer
 var skills_box: VBoxContainer
 # Mercado
 var upgrade_buttons: Dictionary = {}
+var upgrade_pips: Dictionary = {}
+var shop_eter: Label
 var refresh_button: Button
 var sell_button: Button
 var selected_cuartel: Champion = null
@@ -433,45 +435,90 @@ func _build_draft_panel() -> Control:
 
 func _build_market_panel() -> Control:
 	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 8)
 	_phase_timer_row(Game.State.MARKET, box)
-	box.add_child(GameTheme.heading("Tablero personal"))
-	var row := HFlowContainer.new()
-	row.add_theme_constant_override("h_separation", 6)
-	row.add_theme_constant_override("v_separation", 6)
-	box.add_child(row)
+	# Cabecera: nombre de la tienda y Éter en grande.
+	var head := PanelContainer.new()
+	var hs := GameTheme.panel_style()
+	hs.bg_color = Color(0.16, 0.11, 0.06, 0.95)
+	hs.border_color = GameTheme.GOLD
+	head.add_theme_stylebox_override("panel", hs)
+	box.add_child(head)
+	var hrow := HBoxContainer.new()
+	head.add_child(hrow)
+	var hv := VBoxContainer.new()
+	hv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hrow.add_child(hv)
+	hv.add_child(GameTheme.title("Mercado del Demiurgo", 19))
+	var sub := _label("Cartas del mazo, mejoras y ventas. El tiempo corre.")
+	sub.add_theme_font_size_override("font_size", 12)
+	sub.add_theme_color_override("font_color", GameTheme.TEXT_DIM)
+	hv.add_child(sub)
+	shop_eter = GameTheme.title("◆ 0", 30)
+	shop_eter.add_theme_color_override("font_color", Color(0.62, 0.8, 1.0))
+	hrow.add_child(shop_eter)
+	# Pistas de mejora como fichas con puntos de progreso.
+	box.add_child(GameTheme.heading("Mejoras del tablero personal"))
+	var trow := HBoxContainer.new()
+	trow.add_theme_constant_override("separation", 6)
+	box.add_child(trow)
+	var icons := { Adalid.Track.CUARTEL: "⌂", Adalid.Track.BATTLE: "⚔", Adalid.Track.DICE: "⚅" }
+	var names := { Adalid.Track.CUARTEL: "Cuartel", Adalid.Track.BATTLE: "En batalla", Adalid.Track.DICE: "Dados" }
 	for track in [Adalid.Track.CUARTEL, Adalid.Track.BATTLE, Adalid.Track.DICE]:
+		var tile := PanelContainer.new()
+		tile.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var ts := GameTheme.panel_style()
+		ts.set_content_margin_all(6)
+		tile.add_theme_stylebox_override("panel", ts)
+		trow.add_child(tile)
+		var tv := VBoxContainer.new()
+		tv.add_theme_constant_override("separation", 3)
+		tile.add_child(tv)
+		var tl := GameTheme.heading("%s %s" % [icons[track], names[track]], 14)
+		tv.add_child(tl)
+		var pips := Label.new()
+		pips.add_theme_font_size_override("font_size", 12)
+		pips.add_theme_color_override("font_color", GameTheme.GOLD)
+		tv.add_child(pips)
+		upgrade_pips[track] = pips
 		var b := Button.new()
 		b.pressed.connect(func() -> void:
 			game.human_upgrade(track)
 			_refresh_market())
-		row.add_child(b)
+		tv.add_child(b)
 		upgrade_buttons[track] = b
-	box.add_child(GameTheme.heading("Mercado"))
-	box.add_child(_label("Pulsa una carta de la mesa y «Comprar», o arrástrala hasta este panel. Tu mano (abajo) es tu cuartel."))
-	refresh_button = Button.new()
-	refresh_button.text = "⟳ Refrescar el mercado (%d ◆)" % Rules.MARKET_REFRESH_COST
-	refresh_button.custom_minimum_size = Vector2(0, 46)
-	refresh_button.add_theme_font_size_override("font_size", 17)
-	refresh_button.pressed.connect(_on_refresh_market)
-	box.add_child(refresh_button)
+	# Carta seleccionada y acciones.
+	box.add_child(GameTheme.heading("Carta elegida"))
 	market_detail = VBoxContainer.new()
 	market_detail.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	box.add_child(market_detail)
+	var arow := HBoxContainer.new()
+	arow.add_theme_constant_override("separation", 6)
+	box.add_child(arow)
 	buy_button = Button.new()
 	buy_button.text = "Comprar"
 	buy_button.disabled = true
-	buy_button.custom_minimum_size = Vector2(0, 40)
+	buy_button.custom_minimum_size = Vector2(0, 44)
+	buy_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	buy_button.add_theme_font_size_override("font_size", 16)
 	buy_button.pressed.connect(_on_buy_card)
 	GameTheme.primary_button(buy_button)
-	box.add_child(buy_button)
+	arow.add_child(buy_button)
+	refresh_button = Button.new()
+	refresh_button.text = "⟳ Refrescar (%d ◆)" % Rules.MARKET_REFRESH_COST
+	refresh_button.custom_minimum_size = Vector2(0, 44)
+	refresh_button.add_theme_font_size_override("font_size", 15)
+	refresh_button.pressed.connect(_on_refresh_market)
+	arow.add_child(refresh_button)
 	var brow := HBoxContainer.new()
+	brow.add_theme_constant_override("separation", 6)
 	box.add_child(brow)
 	sell_button = Button.new()
 	sell_button.text = "Vender de la mano"
 	sell_button.pressed.connect(_on_sell)
 	brow.add_child(sell_button)
 	var done := Button.new()
-	done.text = "Terminar compras →"
+	done.text = "Listo, a alinear →"
 	done.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	GameTheme.primary_button(done)
 	done.pressed.connect(_finish_market)
@@ -805,15 +852,20 @@ func _deal_market() -> void:
 func _refresh_market() -> void:
 	var h := game.human
 	hint.text = "Compra con el tiempo que marca la barra; al acabarse pasas a la alineación."
-	var names := { Adalid.Track.CUARTEL: "Cuartel", Adalid.Track.BATTLE: "En batalla", Adalid.Track.DICE: "Dados" }
+	shop_eter.text = "◆ %d" % h.eter
 	for track in upgrade_buttons:
 		var b: Button = upgrade_buttons[track]
+		var track_values: Array = [Rules.CUARTEL_TRACK, Rules.BATTLE_TRACK, Rules.DICE_TRACK][track]
+		var done_n: int = h.upgrades[track]
+		var marks: PackedStringArray = []
+		for i in track_values.size():
+			marks.append(("[%s]" if i == done_n else " %s ") % str(track_values[i]))
+		upgrade_pips[track].text = "".join(marks)
 		if h.can_upgrade(track):
-			var next = [Rules.CUARTEL_TRACK, Rules.BATTLE_TRACK, Rules.DICE_TRACK][track][h.upgrades[track] + 1]
-			b.text = "%s → %s (%d ◆)" % [names[track], str(next), h.upgrade_cost(track)]
+			b.text = "Subir a %s · %d ◆" % [str(track_values[done_n + 1]), h.upgrade_cost(track)]
 			b.disabled = not h.can_pay(h.upgrade_cost(track))
 		else:
-			b.text = "%s máx." % names[track]
+			b.text = "Al máximo"
 			b.disabled = true
 	_show_detail(market_detail, selected_card if game.market.has(selected_card) else null)
 	buy_button.disabled = table_busy or selected_card == null or not game.market.has(selected_card) \
@@ -863,20 +915,22 @@ func _refresh_hand() -> void:
 		hand_box.add_child(cv)
 
 
+## La carta crece desde su borde inferior (pivote abajo); nunca se mueve su
+## posición, así un hover/unhover desparejado no la desplaza.
 func _on_hand_hover(cv: CardView) -> void:
+	if not is_instance_valid(cv):
+		return
 	cv.z_index = 10
 	var tw := create_tween()
-	tw.set_parallel(true)
-	tw.tween_property(cv, "scale", Vector2(1.05, 1.05), 0.12).set_trans(Tween.TRANS_SINE)
-	tw.tween_property(cv, "position:y", cv.position.y - 24, 0.12)
+	tw.tween_property(cv, "scale", Vector2(1.08, 1.08), 0.12).set_trans(Tween.TRANS_SINE)
 
 
 func _on_hand_unhover(cv: CardView) -> void:
+	if not is_instance_valid(cv):
+		return
 	cv.z_index = 0
 	var tw := create_tween()
-	tw.set_parallel(true)
 	tw.tween_property(cv, "scale", Vector2(HAND_SCALE, HAND_SCALE), 0.12).set_trans(Tween.TRANS_SINE)
-	tw.tween_property(cv, "position:y", cv.position.y + 24, 0.12)
 
 
 func _finish_market() -> void:
@@ -1187,9 +1241,10 @@ func _animate_events(battle: Battle, evs: Array) -> void:
 					await get_tree().create_timer(0.18).timeout
 			"death":
 				if piece != null:
+					piece.play_clip("death")
 					Fx.burst(board3d, piece.position + Vector3(0, 0.4, 0), Color(0.5, 0.5, 0.55), 30, 0.08)
 					Fx.float_text(board3d, piece.position, "✖", Color(0.9, 0.9, 0.9), 60)
-					await get_tree().create_timer(0.25).timeout
+					await get_tree().create_timer(0.7 if piece.has_model() else 0.25).timeout
 	board3d.sync(battle.board.cells, true)
 	_refresh()
 

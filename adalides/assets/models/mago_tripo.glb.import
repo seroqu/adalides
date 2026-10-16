@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://ceffuh56au77f"
-path="res://.godot/imported/mago_lowpoly_alt.glb-a9b6fa8eb4c9057b1ad16411cebefa59.scn"
+uid="uid://rsmnt2hgj23x"
+path="res://.godot/imported/mago_tripo.glb-b58a524425fb331e8330fe24daa48b6a.scn"
 
 [deps]
 
-source_file="res://assets/models/mago_lowpoly_alt.glb"
-dest_files=["res://.godot/imported/mago_lowpoly_alt.glb-a9b6fa8eb4c9057b1ad16411cebefa59.scn"]
+source_file="res://assets/models/mago_tripo.glb"
+dest_files=["res://.godot/imported/mago_tripo.glb-b58a524425fb331e8330fe24daa48b6a.scn"]
 
 [params]
 

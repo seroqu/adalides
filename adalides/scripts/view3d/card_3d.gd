@@ -116,8 +116,22 @@ func setup(p_card: ChampionData) -> void:
 				pressed.emit()
 			else:
 				released.emit(event.position))
+	body.mouse_entered.connect(func() -> void: _hover(true))
+	body.mouse_exited.connect(func() -> void: _hover(false))
 	add_child(body)
 	rotation_degrees.z = 180 # Boca abajo.
+
+
+var _hover_tw: Tween
+
+
+func _hover(on: bool) -> void:
+	if not face_up:
+		return
+	if _hover_tw != null and _hover_tw.is_valid():
+		_hover_tw.kill()
+	_hover_tw = create_tween()
+	_hover_tw.tween_property(self, "scale", Vector3.ONE * (1.15 if on else 1.0), 0.12).set_trans(Tween.TRANS_SINE)
 
 
 func set_selected(v: bool) -> void:
