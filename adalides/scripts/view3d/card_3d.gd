@@ -21,6 +21,11 @@ var _face: Node3D
 var _frame: Sprite3D
 var _glow: MeshInstance3D
 var _hover_tw: Tween
+var _select_tw: Tween
+var home := Vector3.ZERO # Sitio en la mesa al que vuelve si se suelta fuera.
+var home_rot := Vector3.ZERO
+var dragging: bool = false
+var selected: bool = false
 
 
 ## Convierte coordenadas de la textura (0..512, 0..720) a posición local sobre la cara.
@@ -96,18 +101,18 @@ func setup(p_card: ChampionData) -> void:
 	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_face.add_child(name_label)
 	# Retrato: icono grande del arquetipo (y el segundo, en los héroes).
-	var arch := flat_sprite(Icons.archetype(card.archetype), 0.0046, tex_pos(256, 305) + Vector3(0, 0.002, 0), 2)
+	var arch := flat_sprite(Icons.archetype(card.archetype), 0.0023, tex_pos(256, 305) + Vector3(0, 0.002, 0), 2)
 	arch.modulate = color.lightened(0.15)
 	_face.add_child(arch)
 	if card.second_archetype >= 0:
 		arch.position = tex_pos(200, 305) + Vector3(0, 0.002, 0)
-		arch.pixel_size = 0.0036
-		var arch2 := flat_sprite(Icons.archetype(card.second_archetype), 0.0036, tex_pos(330, 305) + Vector3(0, 0.002, 0), 2)
+		arch.pixel_size = 0.0018
+		var arch2 := flat_sprite(Icons.archetype(card.second_archetype), 0.0018, tex_pos(330, 305) + Vector3(0, 0.002, 0), 2)
 		arch2.modulate = color.lightened(0.15)
 		_face.add_child(arch2)
 	# Elemento (abajo a la izquierda del retrato) y coste (abajo a la derecha).
 	if card.element >= 0:
-		var elem := flat_sprite(Icons.element(card.element), 0.0019, tex_pos(100, 418) + Vector3(0, 0.004, 0), 4)
+		var elem := flat_sprite(Icons.element(card.element), 0.00095, tex_pos(100, 418) + Vector3(0, 0.004, 0), 4)
 		elem.modulate = Color.WHITE
 		_face.add_child(elem)
 	else:
@@ -153,7 +158,7 @@ func setup(p_card: ChampionData) -> void:
 
 
 func _hover(on: bool) -> void:
-	if not face_up:
+	if not face_up or dragging or selected:
 		return
 	if _hover_tw != null and _hover_tw.is_valid():
 		_hover_tw.kill()
@@ -161,12 +166,82 @@ func _hover(on: bool) -> void:
 	_hover_tw.tween_property(self, "scale", Vector3.ONE * (1.12 if on else 1.0), 0.12).set_trans(Tween.TRANS_SINE)
 
 
+## Seleccionada: se eleva, crece y flota con un brillo que late.
 func set_selected(v: bool) -> void:
+	if v == selected:
+		return
+	selected = v
 	_glow.visible = v
+	if _select_tw != null and _select_tw.is_valid():
+		_select_tw.kill()
+	if _hover_tw != null and _hover_tw.is_valid():
+		_hover_tw.kill()
+	if dragging:
+		return
+	_select_tw = create_tween()
+	if v:
+		_select_tw.set_parallel(true)
+		_select_tw.tween_property(self, "scale", Vector3.ONE * 1.18, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		_select_tw.tween_property(self, "position:y", home.y + 0.35, 0.18).set_trans(Tween.TRANS_SINE)
+		_select_tw.tween_property(self, "rotation_degrees:z", 0.0, 0.18)
+		_select_tw.chain().tween_callback(_float_loop)
+	else:
+		_select_tw.set_parallel(true)
+		_select_tw.tween_property(self, "scale", Vector3.ONE, 0.15).set_trans(Tween.TRANS_SINE)
+		_select_tw.tween_property(self, "position", home, 0.2).set_trans(Tween.TRANS_SINE)
+		_select_tw.tween_property(self, "rotation_degrees", home_rot, 0.2).set_trans(Tween.TRANS_SINE)
+
+
+func _float_loop() -> void:
+	if not selected or dragging:
+		return
+	_select_tw = create_tween()
+	_select_tw.set_loops()
+	_select_tw.set_parallel(true)
+	_select_tw.tween_property(self, "position:y", home.y + 0.5, 0.9).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_select_tw.tween_property(self, "rotation_degrees:y", 4.0, 0.9).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_select_tw.tween_property(_glow, "scale", Vector3(1.08, 1, 1.06), 0.9).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_select_tw.chain().tween_property(self, "position:y", home.y + 0.35, 0.9).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_select_tw.parallel().tween_property(self, "rotation_degrees:y", -4.0, 0.9).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_select_tw.parallel().tween_property(_glow, "scale", Vector3.ONE, 0.9).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 
 func is_selected() -> bool:
-	return _glow.visible
+	return selected
+
+
+## Empieza a seguir al ratón: se endereza, crece y pierde su inclinación.
+func begin_drag() -> void:
+	dragging = true
+	for tw in [_select_tw, _hover_tw]:
+		if tw != null and tw.is_valid():
+			tw.kill()
+	var tw := create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(self, "scale", Vector3.ONE * 1.25, 0.12).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(self, "rotation_degrees", Vector3(-50, 0, 0), 0.15).set_trans(Tween.TRANS_SINE)
+
+
+## Sitúa la carta bajo el cursor (punto del plano de arrastre), con un leve balanceo.
+func follow(point: Vector3) -> void:
+	var delta := point - position
+	position = position.lerp(point, 0.55)
+	rotation_degrees.z = clampf(-delta.x * 25.0, -18.0, 18.0)
+	rotation_degrees.x = -50.0 + clampf(delta.z * 20.0, -12.0, 12.0)
+
+
+## Vuelve volando a su sitio en la mesa.
+func return_home() -> void:
+	dragging = false
+	var tw := create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(self, "position", home, 0.3).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(self, "rotation_degrees", home_rot, 0.3).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(self, "scale", Vector3.ONE, 0.3).set_trans(Tween.TRANS_SINE)
+	if selected:
+		tw.chain().tween_callback(func() -> void:
+			selected = false
+			set_selected(true))
 
 
 func set_dim(v: bool) -> void:

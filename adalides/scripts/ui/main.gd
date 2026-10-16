@@ -54,7 +54,8 @@ var tier_label_bottom: Label
 var selected_card: ChampionData = null
 var table_busy: bool = false
 var card_detail: VBoxContainer
-var take_button: Button
+var drop_zone: PanelContainer
+var drop_label: Label
 var skip_button: Button
 var buy_button: Button
 var market_detail: VBoxContainer
@@ -668,29 +669,41 @@ func _build_draft_panel() -> Control:
 	bv.add_theme_constant_override("separation", 8)
 	block.add_child(bv)
 	bv.add_child(GameTheme.heading("Draft inicial · cada adalid toma 2", 15))
-	var tip := _label("Pulsa una carta o arrástrala hasta aquí.")
-	tip.add_theme_font_size_override("font_size", 13)
-	tip.add_theme_color_override("font_color", GameTheme.TEXT_DIM)
-	bv.add_child(tip)
+	drop_zone = PanelContainer.new()
+	drop_zone.custom_minimum_size = Vector2(0, 150)
+	_style_drop_zone(false)
+	bv.add_child(drop_zone)
+	var dz := VBoxContainer.new()
+	dz.alignment = BoxContainer.ALIGNMENT_CENTER
+	drop_zone.add_child(dz)
+	var icon := Label.new()
+	icon.text = "⤓"
+	icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	icon.add_theme_font_size_override("font_size", 40)
+	icon.add_theme_color_override("font_color", GameTheme.GOLD)
+	dz.add_child(icon)
+	drop_label = _label("Arrastra aquí la carta que quieras")
+	drop_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	drop_label.add_theme_color_override("font_color", GameTheme.TEXT_DIM)
+	dz.add_child(drop_label)
 	card_detail = VBoxContainer.new()
 	bv.add_child(card_detail)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 6)
-	bv.add_child(row)
-	take_button = Button.new()
-	take_button.text = "Tomar carta"
-	take_button.disabled = true
-	take_button.custom_minimum_size = Vector2(0, 44)
-	take_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	take_button.pressed.connect(_on_take_card)
-	GameTheme.primary_button(take_button)
-	row.add_child(take_button)
 	skip_button = Button.new()
-	skip_button.text = "Pasar"
+	skip_button.text = "Ninguna cabe: pasar"
 	skip_button.visible = false
 	skip_button.pressed.connect(_on_skip_draft)
-	row.add_child(skip_button)
+	bv.add_child(skip_button)
 	return box
+
+
+func _style_drop_zone(active: bool) -> void:
+	var st := StyleBoxFlat.new()
+	st.bg_color = Color(0.25, 0.45, 0.3, 0.5) if active else Color(0.1, 0.09, 0.15, 0.6)
+	st.border_color = Color(0.45, 1.0, 0.55) if active else GameTheme.GOLD_DIM
+	st.set_border_width_all(2)
+	st.set_corner_radius_all(10)
+	st.set_content_margin_all(10)
+	drop_zone.add_theme_stylebox_override("panel", st)
 
 
 func _build_market_panel() -> Control:
@@ -1027,7 +1040,7 @@ func _enter_state() -> void:
 	drag.clear()
 	drag_preview.visible = false
 	phase_left = 0.0
-	hand_panel.visible = game.state in [Game.State.MARKET, Game.State.LINEUP]
+	hand_panel.visible = game.state in [Game.State.DRAFT, Game.State.MARKET, Game.State.LINEUP]
 	if game.state != Game.State.DRAFT and game.state != Game.State.MARKET:
 		table.clear()
 		table.visible = false
@@ -1091,7 +1104,7 @@ func _refresh_draft() -> void:
 	elif table_busy:
 		hint.text = "Repartiendo..."
 	elif my_turn:
-		hint.text = "Te toca elegir."
+		hint.text = "Te toca: arrastra una carta de la mesa a tu lado."
 	else:
 		hint.text = "Eligen los demás adalides..."
 	_show_detail(card_detail, selected_card)
@@ -1100,9 +1113,10 @@ func _refresh_draft() -> void:
 		if game.human.can_add(card):
 			fits = true
 			break
-	take_button.disabled = not (my_turn and table.dealt and not table_busy and selected_card != null
-		and game.human.can_add(selected_card))
+	drop_label.text = "Arrastra aquí la carta que quieras" if my_turn else "Esperando a los demás adalides…"
+	drop_zone.modulate = Color.WHITE if my_turn and table.dealt else Color(0.7, 0.7, 0.7)
 	skip_button.visible = my_turn and table.dealt and not table_busy and not fits
+	_refresh_hand()
 	if table.dealt:
 		table.dim_unavailable(func(card: ChampionData) -> bool: return game.human.can_add(card))
 	_refresh()
@@ -1161,11 +1175,11 @@ func _on_table_card_pressed(card: ChampionData) -> void:
 	if game.state == Game.State.DRAFT:
 		_refresh_draft()
 		if game.draft_current() == game.human and game.human.can_add(card):
-			_begin_drag({ "kind": "table_card", "card": card }, Icons.archetype(card.archetype), card.display_name)
+			_begin_drag({ "kind": "table_card", "card": card, "card3d": table.find_card(card) }, Icons.archetype(card.archetype), card.display_name)
 	elif game.state == Game.State.MARKET:
 		_refresh_market()
 		if game.human.can_add(card) and game.human.can_pay(card.cost):
-			_begin_drag({ "kind": "table_card", "card": card }, Icons.archetype(card.archetype), card.display_name)
+			_begin_drag({ "kind": "table_card", "card": card, "card3d": table.find_card(card) }, Icons.archetype(card.archetype), card.display_name)
 
 
 func _on_take_card() -> void:
@@ -1238,7 +1252,9 @@ func _refresh_hand() -> void:
 	for ch in h.cuartel:
 		var cv := CardView.new()
 		var extra := ""
-		if game.state == Game.State.MARKET:
+		if game.state == Game.State.DRAFT:
+			extra = "en tu cuartel"
+		elif game.state == Game.State.MARKET:
 			extra = "vender por %d ◆" % h.sell_value(ch)
 		elif game.state == Game.State.LINEUP:
 			extra = "en el tablero ✔" if lineup.values().has(ch) else "en la mano"
@@ -1405,11 +1421,22 @@ func _input(event: InputEvent) -> void:
 		var pos: Vector2 = event.position
 		if not drag_active and pos.distance_to(drag_origin) > DRAG_THRESHOLD:
 			drag_active = true
-			drag_preview.visible = true
+			drag_preview.visible = drag["kind"] != "table_card"
+			if drag["kind"] == "table_card" and drag.get("card3d") != null:
+				(drag["card3d"] as Card3D).begin_drag()
 		if drag_active:
 			drag_preview.position = pos + Vector2(14, 14)
 			if drag["kind"] == "table_card":
-				right_panel.modulate = Color(1.2, 1.15, 1.0) if right_panel.get_global_rect().has_point(pos) else Color.WHITE
+				var over := _over_drop_zone(pos)
+				right_panel.modulate = Color(1.2, 1.15, 1.0) if over else Color.WHITE
+				if drop_zone != null and game.state == Game.State.DRAFT:
+					_style_drop_zone(over)
+				var c3d: Card3D = drag.get("card3d")
+				if c3d != null and is_instance_valid(c3d):
+					var from := camera.project_ray_origin(pos)
+					var hit = Plane(Vector3.UP, 1.9).intersects_ray(from, camera.project_ray_normal(pos))
+					if hit != null:
+						c3d.follow(hit)
 	elif event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		_end_drag(event.position)
 
@@ -1441,12 +1468,24 @@ func _end_drag(pos: Vector2) -> void:
 						lineup.erase(k)
 			_refresh_lineup()
 		"table_card":
-			if active and right_panel.get_global_rect().has_point(pos):
+			if drop_zone != null and game.state == Game.State.DRAFT:
+				_style_drop_zone(false)
+			var c3d: Card3D = data.get("card3d")
+			if active and _over_drop_zone(pos):
 				selected_card = data["card"]
+				if c3d != null and is_instance_valid(c3d):
+					c3d.dragging = false
 				if game.state == Game.State.DRAFT:
 					_on_take_card()
 				elif game.state == Game.State.MARKET:
 					_on_buy_card()
+			elif c3d != null and is_instance_valid(c3d) and active:
+				c3d.return_home()
+
+
+## Zona donde soltar una carta de la mesa: el panel lateral o la mano.
+func _over_drop_zone(pos: Vector2) -> bool:
+	return right_panel.get_global_rect().has_point(pos) or hand_panel.get_global_rect().has_point(pos)
 
 
 func _tile_under_mouse(pos: Vector2) -> Vector2i:
@@ -1746,6 +1785,25 @@ func _screenshot_tour(dir: String) -> void:
 	while table_busy:
 		await get_tree().process_frame
 	await _snap(dir.path_join("1_draft.png"))
+	if game.draft_current() == game.human and not game.draft_pool.is_empty():
+		var demo: ChampionData = game.draft_pool[7 % game.draft_pool.size()]
+		selected_card = demo
+		table.select(demo)
+		_refresh_draft()
+		await get_tree().create_timer(0.6, false).timeout
+		await _snap(dir.path_join("1_draft_seleccion.png"))
+		var c3d := table.find_card(demo)
+		c3d.begin_drag()
+		for i in 12:
+			c3d.follow(Vector3(-3.0 + i * 0.1, 1.9, 1.2 - i * 0.25))
+			await get_tree().process_frame
+		_style_drop_zone(true)
+		await _snap(dir.path_join("1_draft_arrastre.png"))
+		_style_drop_zone(false)
+		c3d.return_home()
+		await get_tree().create_timer(0.4, false).timeout
+		selected_card = null
+		table.select(null)
 	while game.state == Game.State.DRAFT:
 		if game.draft_current() == game.human:
 			var pick: ChampionData = null

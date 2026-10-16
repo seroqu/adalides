@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Sello arcano para la mesa del draft: blanco para teñirlo. -->
+  <g fill="none" stroke="#fff" stroke-linecap="round">
+    <circle cx="256" cy="256" r="244" stroke-width="6"/>
+    <circle cx="256" cy="256" r="222" stroke-width="2"/>
+    <circle cx="256" cy="256" r="150" stroke-width="4"/>
+    <circle cx="256" cy="256" r="60" stroke-width="3"/>
+    <polygon points="256,40 443,364 69,364" stroke-width="4"/>
+    <polygon points="256,472 69,148 443,148" stroke-width="4"/>
+    <g stroke-width="5">
+      <path d="M256 14v26"/><path d="M256 472v26"/><path d="M14 256h26"/><path d="M472 256h26"/>
+      <path d="M85 85l18 18"/><path d="M427 85l-18 18"/><path d="M85 427l18-18"/><path d="M427 427l-18-18"/>
+    </g>
+    <g stroke-width="3" opacity=".8">
+      <path d="M256 210l14 24-14 24-14-24z"/><path d="M190 256h22M300 256h22"/>
+      <path d="M160 186l12 12M352 186l-12 12M160 326l12-12M352 326l-12-12"/>
+    </g>
+    <g stroke-width="4" opacity=".9">
+      <path d="M256 162l-10 18h20z"/><path d="M256 350l-10-18h20z"/><path d="M162 256l18-10v20z"/><path d="M350 256l-18-10v20z"/>
+      <path d="M118 118l10 22M394 118l-10 22M118 394l10-22M394 394l-10-22"/>
+      <path d="M204 70l8 16M308 70l-8 16M204 442l8-16M308 442l-8-16M70 204l16 8M70 308l16-8M442 204l-16 8M442 308l-16-8"/>
+    </g>
+  </g>
+  <g fill="#fff"><circle cx="256" cy="256" r="10"/><circle cx="256" cy="34" r="6"/><circle cx="256" cy="478" r="6"/><circle cx="34" cy="256" r="6"/><circle cx="478" cy="256" r="6"/></g>
+</svg>

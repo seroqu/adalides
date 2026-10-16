@@ -61,7 +61,7 @@ func _load_model() -> void:
 				_clips["idle"] = _anim.get_animation_list()[0]
 			play_clip("idle", true)
 		_arch.position.y = 1.62 # El icono sube para no tapar el modelo.
-		_arch.pixel_size = 0.0026
+		_arch.pixel_size = 0.0013
 		if _elem != null:
 			_elem.position = Vector3(0.32, 1.52, 0)
 		for bar in [_bar_bg, _bar_inner, _bar_ghost, _bar_fill]:
@@ -168,7 +168,7 @@ func setup(ch: Champion, p_side: int) -> void:
 	add_child(_ring)
 	_arch = Sprite3D.new()
 	_arch.texture = Icons.archetype(ch.data.archetype)
-	_arch.pixel_size = 0.0044
+	_arch.pixel_size = 0.0022
 	_arch.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_arch.position.y = 0.5
 	_arch.shaded = false
@@ -177,7 +177,7 @@ func setup(ch: Champion, p_side: int) -> void:
 		_elem = Sprite3D.new()
 		_elem.texture = Icons.element(ch.data.element)
 		_elem.modulate = color
-		_elem.pixel_size = 0.0022
+		_elem.pixel_size = 0.0011
 		_elem.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		_elem.position = Vector3(0.32, 0.78, 0)
 		_elem.shaded = false
