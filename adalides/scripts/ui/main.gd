@@ -100,6 +100,7 @@ var step_button: Button
 var battle_paused: bool = false
 var battle_playing: bool = false
 var _auto_token: int = 0
+var _last_hit: Dictionary = {} # Dirección, elemento y color del último ataque animado.
 
 
 func _ready() -> void:
@@ -1523,6 +1524,7 @@ func _announce_battle(battle: Battle) -> void:
 
 
 func _animate_events(battle: Battle, evs: Array) -> void:
+	_last_hit = {}
 	for e in evs:
 		if game.current_battle != battle:
 			return
@@ -1537,19 +1539,33 @@ func _animate_events(battle: Battle, evs: Array) -> void:
 			"attack":
 				var target_piece: ChampionPiece = board3d.piece_of(e["target"])
 				if piece != null and target_piece != null:
+					var color := Icons.color_of(ch.data)
+					var dir := (target_piece.position - piece.position).normalized()
+					_last_hit = { "dir": dir, "element": ch.data.element, "color": color }
 					if ch.data.reach() == 1:
-						await piece.lunge(target_piece.position).finished
+						Fx.dust_puff(board3d, piece.position, dir)
+						var lunge := piece.lunge(target_piece.position)
+						await get_tree().create_timer(0.11, false).timeout
+						Fx.slash(board3d, target_piece.position + Vector3(0, 0.6, 0), color, -35.0 if dir.x <= 0 else 35.0)
+						Fx.impact(board3d, target_piece.position, color, ch.data.element, dir, 0.8)
+						_camera_shake(0.05)
+						await lunge.finished
 					else:
-						Fx.beam(board3d, piece.position, target_piece.position, Icons.color_of(ch.data))
-						await get_tree().create_timer(0.2, false).timeout
+						piece.play_clip("attack")
+						await Fx.projectile(board3d, piece.position, target_piece.position, color, ch.data.element, ch.data.reach() >= 3)
+						Fx.impact(board3d, target_piece.position, color, ch.data.element, dir, 1.0)
+						_camera_shake(0.03)
 			"damage":
 				if piece != null:
 					piece.show_hp(e["hp"])
 					if e["amount"] > 0:
 						piece.flash(Color.WHITE)
 						piece.shake()
-						Fx.float_text(board3d, piece.position, "-%d" % e["amount"], Color(1, 0.35, 0.3))
-						Fx.burst(board3d, piece.position + Vector3(0, 0.5, 0), Color(1, 0.3, 0.2) if not e["power"] else Color(1, 0.6, 0.2), 14, 0.05)
+						Fx.float_text(board3d, piece.position, "-%d" % e["amount"], Color(1, 0.35, 0.3), 56 + mini(e["amount"], 6) * 6)
+						if e["power"] or _last_hit.is_empty():
+							Fx.impact(board3d, piece.position, Color(1, 0.6, 0.2), -1, Vector3.UP, 0.7)
+						else:
+							Fx.burst(board3d, piece.position + Vector3(0, 0.6, 0), Color(1, 0.3, 0.2), 8, 0.05)
 					else:
 						Fx.float_text(board3d, piece.position, "0", Color(0.7, 0.7, 0.7), 40)
 					await get_tree().create_timer(0.22, false).timeout
@@ -1599,6 +1615,20 @@ func _animate_events(battle: Battle, evs: Array) -> void:
 					await get_tree().create_timer(0.7 if piece.has_model() else 0.25, false).timeout
 	board3d.sync(battle.board.cells, true)
 	_refresh()
+
+
+## Sacudida breve de la cámara al impactar un golpe.
+func _camera_shake(amp: float) -> void:
+	var base_h := camera.h_offset
+	var base_v := camera.v_offset
+	var tw := create_tween()
+	tw.tween_method(func(t: float) -> void:
+		var k := (1.0 - t) * amp
+		camera.h_offset = base_h + sin(t * 50.0) * k
+		camera.v_offset = base_v + cos(t * 43.0) * k * 0.6, 0.0, 1.0, 0.25)
+	tw.tween_callback(func() -> void:
+		camera.h_offset = base_h
+		camera.v_offset = base_v)
 
 
 func _tier_banner(side: int, text: String, color: Color) -> void:
@@ -1758,8 +1788,9 @@ func _screenshot_tour(dir: String) -> void:
 		_toggle_pause()
 		await _snap(dir.path_join("4_batalla.png"))
 		_step_round()
-		await get_tree().create_timer(0.9, false).timeout
-		await _snap(dir.path_join("5_batalla_animando.png"))
+		for i in 14:
+			await get_tree().create_timer(0.12, false).timeout
+			await _snap(dir.path_join("5_batalla_animando_%02d.png" % i))
 		while battle_playing:
 			await get_tree().process_frame
 		await _snap(dir.path_join("6_batalla_resuelta.png"))
