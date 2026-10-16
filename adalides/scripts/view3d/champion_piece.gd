@@ -20,6 +20,92 @@ var _bar_ghost: MeshInstance3D
 var _bar_fill: MeshInstance3D
 var _fill_mat: StandardMaterial3D
 var _shown_hp: int = -1
+var _model: Node3D = null
+var _anim: AnimationPlayer = null
+var _clips: Dictionary = {} # "idle" / "attack" / "hit" / "death" → nombre del clip
+
+
+## Rutas candidatas del modelo 3D de una carta, de más específica a más genérica.
+static func model_paths(data: ChampionData) -> PackedStringArray:
+	var out: PackedStringArray = []
+	out.append("res://assets/models/%s.glb" % data.id)
+	if not data.hero:
+		out.append("res://assets/models/%s.glb" % Icons.ARCHETYPE_FILES.get(data.archetype, ""))
+	else:
+		out.append("res://assets/models/%s.glb" % Icons.ARCHETYPE_FILES.get(data.archetype, ""))
+	return out
+
+
+## Carga el modelo GLB si existe y lo coloca sobre la base; si no, se queda el icono.
+func _load_model() -> void:
+	for path in model_paths(champion.data):
+		if not ResourceLoader.exists(path):
+			continue
+		var scene: PackedScene = load(path)
+		if scene == null:
+			continue
+		_model = scene.instantiate()
+		_model.position.y = 0.16
+		_model.rotation_degrees.y = 180 if side == 1 else 0 # Mira al rival.
+		add_child(_model)
+		_fit_model()
+		_anim = _find_anim(_model)
+		if _anim != null:
+			for name in _anim.get_animation_list():
+				var lower := String(name).to_lower()
+				for key in ["idle", "attack", "hit", "death"]:
+					if lower.contains(key) and not _clips.has(key):
+						_clips[key] = name
+			if not _clips.has("idle") and _anim.get_animation_list().size() > 0:
+				_clips["idle"] = _anim.get_animation_list()[0]
+			play_clip("idle", true)
+		_arch.position.y = 1.35 # El icono sube para no tapar el modelo.
+		_arch.pixel_size = 0.0026
+		return
+
+
+## Escala el modelo para que mida ~0.9 unidades de alto y quede centrado en la casilla.
+func _fit_model() -> void:
+	var aabb := _model_aabb(_model)
+	if aabb.size.y <= 0.0:
+		return
+	var factor := 0.9 / aabb.size.y
+	_model.scale = Vector3.ONE * factor
+	_model.position = Vector3(-aabb.get_center().x * factor, 0.16 - aabb.position.y * factor, -aabb.get_center().z * factor)
+
+
+func _model_aabb(node: Node) -> AABB:
+	var total := AABB()
+	var first := true
+	for child in node.find_children("*", "MeshInstance3D", true, false):
+		var mi: MeshInstance3D = child
+		var box: AABB = mi.global_transform * mi.get_aabb()
+		box = Transform3D(global_transform.affine_inverse()) * box
+		total = box if first else total.merge(box)
+		first = false
+	return total
+
+
+func _find_anim(node: Node) -> AnimationPlayer:
+	for child in node.find_children("*", "AnimationPlayer", true, false):
+		return child
+	return null
+
+
+func play_clip(key: String, loop := false) -> void:
+	if _anim == null or not _clips.has(key):
+		return
+	var name: StringName = _clips[key]
+	var anim := _anim.get_animation(name)
+	if anim != null:
+		anim.loop_mode = Animation.LOOP_LINEAR if loop else Animation.LOOP_NONE
+	_anim.play(name)
+	if not loop and _clips.has("idle"):
+		_anim.animation_finished.connect(func(_n: StringName) -> void: play_clip("idle", true), CONNECT_ONE_SHOT)
+
+
+func has_model() -> bool:
+	return _model != null
 
 
 func setup(ch: Champion, p_side: int) -> void:
@@ -83,6 +169,7 @@ func setup(ch: Champion, p_side: int) -> void:
 	_status.no_depth_test = true
 	_status.position.y = 1.32
 	add_child(_status)
+	_load_model()
 	refresh()
 
 
@@ -140,6 +227,7 @@ func show_hp(hp: int) -> void:
 
 
 func flash(color: Color) -> void:
+	play_clip("hit")
 	var mat: StandardMaterial3D = _base.material_override
 	var original := Icons.color_of(champion.data)
 	var tw := create_tween()
@@ -157,6 +245,7 @@ func shake() -> void:
 
 ## Embestida hacia un punto y vuelta (ataque cuerpo a cuerpo).
 func lunge(target: Vector3) -> Tween:
+	play_clip("attack")
 	var origin := position
 	var toward := origin.lerp(target, 0.35)
 	var tw := create_tween()
