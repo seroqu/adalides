@@ -40,7 +40,13 @@ func _ready() -> void:
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color(0.55, 0.5, 0.65)
-	env.ambient_light_energy = 0.9
+	env.ambient_light_energy = 1.2
+	# Luz de relleno desde la cámara para que los modelos no queden a contraluz.
+	var fill := DirectionalLight3D.new()
+	fill.rotation_degrees = Vector3(-35, 180, 0)
+	fill.light_energy = 0.6
+	fill.light_color = Color(0.9, 0.9, 1.0)
+	add_child(fill)
 	env.glow_enabled = true
 	env.glow_intensity = 0.4
 	env.glow_bloom = 0.1

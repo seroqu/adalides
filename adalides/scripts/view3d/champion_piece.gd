@@ -16,6 +16,7 @@ var _arch: Sprite3D
 var _elem: Sprite3D
 var _status: Label3D
 var _bar_bg: MeshInstance3D
+var _bar_inner: MeshInstance3D
 var _bar_ghost: MeshInstance3D
 var _bar_fill: MeshInstance3D
 var _fill_mat: StandardMaterial3D
@@ -59,8 +60,25 @@ func _load_model() -> void:
 			if not _clips.has("idle") and _anim.get_animation_list().size() > 0:
 				_clips["idle"] = _anim.get_animation_list()[0]
 			play_clip("idle", true)
-		_arch.position.y = 1.35 # El icono sube para no tapar el modelo.
+		_arch.position.y = 1.62 # El icono sube para no tapar el modelo.
 		_arch.pixel_size = 0.0026
+		if _elem != null:
+			_elem.position = Vector3(0.32, 1.52, 0)
+		for bar in [_bar_bg, _bar_inner, _bar_ghost, _bar_fill]:
+			bar.position.y = 1.32
+		_status.position.y = 1.85
+		# Los materiales importados se ven oscuros con la luz del tablero: se aclaran un poco.
+		for mi in _model.find_children("*", "MeshInstance3D", true, false):
+			for i in (mi.mesh.get_surface_count() if mi.mesh != null else 0):
+				var mat: Material = mi.get_active_material(i)
+				if mat is BaseMaterial3D:
+					var m: BaseMaterial3D = mat.duplicate()
+					m.roughness = 0.85
+					m.metallic = 0.0
+					m.emission_enabled = true
+					m.emission = Color(0.18, 0.18, 0.2)
+					m.emission_energy_multiplier = 0.9
+					mi.set_surface_override_material(i, m)
 		return
 
 
@@ -69,7 +87,7 @@ func _fit_model() -> void:
 	var aabb := _model_aabb(_model)
 	if aabb.size.y <= 0.0:
 		return
-	var factor := 0.9 / aabb.size.y
+	var factor := 1.05 / aabb.size.y
 	_model.scale = Vector3.ONE * factor
 	_model.position = Vector3(-aabb.get_center().x * factor, 0.16 - aabb.position.y * factor, -aabb.get_center().z * factor)
 
@@ -106,6 +124,17 @@ func play_clip(key: String, loop := false) -> void:
 
 func has_model() -> bool:
 	return _model != null
+
+
+## Respiración suave: el modelo (o el icono) sube y baja ligeramente en bucle.
+func _start_idle_bob() -> void:
+	var target: Node3D = _model if _model != null else _arch
+	if target == null:
+		return
+	var base_y := target.position.y
+	var tw := create_tween().set_loops()
+	tw.tween_property(target, "position:y", base_y + 0.05, 0.9 + randf() * 0.4).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tw.tween_property(target, "position:y", base_y, 0.9 + randf() * 0.4).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 
 func setup(ch: Champion, p_side: int) -> void:
@@ -156,8 +185,8 @@ func setup(ch: Champion, p_side: int) -> void:
 	# Barra de vida: fondo, estela (daño reciente) y relleno, ancladas a la izquierda.
 	var border := Color(0.25, 0.55, 1.0) if side == 0 else Color(1.0, 0.3, 0.28)
 	_bar_bg = _bar_quad(border, BAR_W + 0.08, BAR_H + 0.07, 0)
-	var inner := _bar_quad(Color(0.05, 0.05, 0.08, 1.0), BAR_W + 0.02, BAR_H + 0.02, 1)
-	inner.position.x -= 0.01
+	_bar_inner = _bar_quad(Color(0.05, 0.05, 0.08, 1.0), BAR_W + 0.02, BAR_H + 0.02, 1)
+	_bar_inner.position.x -= 0.01
 	_bar_ghost = _bar_quad(Color(1.0, 0.85, 0.3, 1.0), BAR_W, BAR_H, 2)
 	_bar_fill = _bar_quad(Color(0.4, 0.9, 0.4, 1.0), BAR_W, BAR_H, 3)
 	_fill_mat = _bar_fill.material_override
@@ -170,6 +199,8 @@ func setup(ch: Champion, p_side: int) -> void:
 	_status.position.y = 1.32
 	add_child(_status)
 	_load_model()
+	if _anim == null:
+		_start_idle_bob()
 	refresh()
 
 
