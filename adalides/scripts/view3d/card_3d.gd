@@ -120,6 +120,10 @@ func set_selected(v: bool) -> void:
 	_glow.visible = v
 
 
+func is_selected() -> bool:
+	return _glow.visible
+
+
 func set_dim(v: bool) -> void:
 	var mat: StandardMaterial3D = _plate.material_override
 	mat.albedo_color = Icons.color_of(card).darkened(0.75 if v else 0.3)

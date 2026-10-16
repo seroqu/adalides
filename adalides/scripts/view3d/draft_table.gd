@@ -11,7 +11,7 @@ const SPACING_Z := 1.25
 const HOVER_Y := 0.9
 
 var deck_node: Node3D
-var cards: Dictionary = {} # ChampionData → Card3D
+var cards: Array[Card3D] = [] # Una misma carta puede estar repetida (copias del mazo).
 var dealt: bool = false
 var deck_pos := Vector3(-1.9, 0.0, -0.7)
 
@@ -81,7 +81,7 @@ func deal(pool: Array[ChampionData]) -> void:
 		c.rotation_degrees.x = -28 # Inclinada hacia la cámara.
 		add_child(c)
 		c.pressed.connect(func() -> void: card_clicked.emit(card))
-		cards[card] = c
+		cards.append(c)
 		var target := slot_position(i, pool.size())
 		var tw := create_tween()
 		tw.tween_interval(0.08 * i)
@@ -96,10 +96,10 @@ func deal(pool: Array[ChampionData]) -> void:
 
 ## La carta vuela hacia el fondo (la toma una IA) o hacia la cámara (la tomas tú).
 func take(card: ChampionData, by_human: bool) -> void:
-	if not cards.has(card):
+	var c := find_card(card)
+	if c == null:
 		return
-	var c: Card3D = cards[card]
-	cards.erase(card)
+	cards.erase(c)
 	var target := Vector3(c.position.x, 2.5, -2.5) if by_human else Vector3(c.position.x, 2.2, 7.5)
 	var tw := create_tween()
 	tw.set_parallel(true)
@@ -109,18 +109,34 @@ func take(card: ChampionData, by_human: bool) -> void:
 	await tw.finished
 
 
+## Primera carta 3D de la mesa con esos datos (prefiere la seleccionada).
+func find_card(card: ChampionData) -> Card3D:
+	var found: Card3D = null
+	for c in cards:
+		if c.card == card:
+			if c.is_selected():
+				return c
+			if found == null:
+				found = c
+	return found
+
+
 func select(card: ChampionData) -> void:
-	for other in cards:
-		cards[other].set_selected(other == card)
+	var first := true
+	for c in cards:
+		var sel := c.card == card and first
+		if sel:
+			first = false
+		c.set_selected(sel)
 
 
 func dim_unavailable(available: Callable) -> void:
-	for card in cards:
-		cards[card].set_dim(not available.call(card))
+	for c in cards:
+		c.set_dim(not available.call(c.card))
 
 
 func clear() -> void:
-	for card in cards:
-		cards[card].queue_free()
+	for c in cards:
+		c.queue_free()
 	cards.clear()
 	dealt = false
