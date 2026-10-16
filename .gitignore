@@ -2,7 +2,6 @@
 adalides/.godot/
 adalides/android/
 adalides/export/
-adalides/export_presets.cfg
 *.import.tmp
 
 # Editores
@@ -15,3 +14,6 @@ adalides/export_presets.cfg
 # Sistema
 .DS_Store
 Thumbs.db
+
+# Binarios exportados
+build/
