@@ -79,6 +79,9 @@ func begin_cycle() -> bool:
 	log.clear()
 	last_battles.clear()
 	log.append("##### Ciclo %d #####" % cycle)
+	if cycle > 1:
+		_begin_market() # El draft solo se hace en el primer ciclo.
+		return true
 	var players := alive_adalids()
 	draft_pool = deck.draw(Rules.DRAFT_CARDS_PER_PLAYER * players.size(), false)
 	# Orden de serpiente: SUPUESTO, empieza quien tiene menos vida.

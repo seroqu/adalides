@@ -25,7 +25,7 @@ func setup(p_card: ChampionData) -> void:
 	box.size = Vector3(W, 0.03, H)
 	_plate.mesh = box
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color.darkened(0.55)
+	mat.albedo_color = color.darkened(0.3)
 	_plate.material_override = mat
 	add_child(_plate)
 	# Dorso: placa oscura con borde dorado, pegada debajo.
@@ -46,10 +46,11 @@ func setup(p_card: ChampionData) -> void:
 	add_child(_face)
 	var arch := Sprite3D.new()
 	arch.texture = Icons.archetype(card.archetype)
-	arch.pixel_size = 0.0032
+	arch.pixel_size = 0.0034
 	arch.rotation_degrees = Vector3(-90, 180, 0)
-	arch.position = Vector3(0, 0, -0.12)
+	arch.position = Vector3(0, 0, -0.14)
 	arch.shaded = false
+	arch.modulate = Color(0.06, 0.05, 0.1)
 	_face.add_child(arch)
 	if card.second_archetype >= 0:
 		var arch2 := Sprite3D.new()
@@ -62,7 +63,7 @@ func setup(p_card: ChampionData) -> void:
 	if card.element >= 0:
 		var elem := Sprite3D.new()
 		elem.texture = Icons.element(card.element)
-		elem.modulate = color
+		elem.modulate = Color(0.06, 0.05, 0.1)
 		elem.pixel_size = 0.0018
 		elem.rotation_degrees = Vector3(-90, 180, 0)
 		elem.position = Vector3(-0.24, 0, -0.38)
@@ -70,17 +71,19 @@ func setup(p_card: ChampionData) -> void:
 		_face.add_child(elem)
 	var name_label := Label3D.new()
 	name_label.text = card.display_name.replace(" de ", "\nde ")
-	name_label.font_size = 40
+	name_label.font_size = 44
 	name_label.pixel_size = 0.0032
-	name_label.outline_size = 8
+	name_label.outline_size = 12
+	name_label.outline_modulate = Color(0, 0, 0, 0.9)
 	name_label.rotation_degrees = Vector3(-90, 180, 0)
 	name_label.position = Vector3(0, 0, 0.22)
 	_face.add_child(name_label)
 	var stats := Label3D.new()
 	stats.text = "⚔%d ♥%d ◆%d" % [card.attack, card.defense, card.cost]
-	stats.font_size = 34
+	stats.font_size = 38
 	stats.pixel_size = 0.0032
-	stats.outline_size = 8
+	stats.outline_size = 12
+	stats.outline_modulate = Color(0, 0, 0, 0.9)
 	stats.modulate = Color(1, 0.95, 0.7)
 	stats.rotation_degrees = Vector3(-90, 180, 0)
 	stats.position = Vector3(0, 0, 0.42)
@@ -119,7 +122,7 @@ func set_selected(v: bool) -> void:
 
 func set_dim(v: bool) -> void:
 	var mat: StandardMaterial3D = _plate.material_override
-	mat.albedo_color = Icons.color_of(card).darkened(0.8 if v else 0.55)
+	mat.albedo_color = Icons.color_of(card).darkened(0.75 if v else 0.3)
 
 
 ## Voltea la carta (boca arriba) con una pequeña elevación.

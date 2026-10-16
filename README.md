@@ -76,8 +76,9 @@ Recordatorios impresos en el tablero:
 
 ## El ciclo
 
-1. **Draft.** Se muestran **3 × jugadores** cartas del mazo del demiurgo (nunca héroes; si salen se reemplazan).
-   Cada adalid toma **2**, por turnos en orden de serpiente (estilo Catan). *Supuesto:* empieza quien tiene menos vida.
+1. **Draft** (solo en el primer ciclo). Se muestran **3 × jugadores** cartas del mazo del demiurgo (nunca héroes;
+   si salen se reemplazan). Cada adalid toma **2**, por turnos en orden de serpiente (estilo Catan).
+   *Supuesto:* empieza quien tiene menos vida.
 2. **Mercado y mejoras.** Cada adalid cobra, compra cartas del mercado (4 cartas; refrescar cuesta 2), vende y mejora
    su tablero personal. Los héroes cuestan **10** y solo caben si hay un hueco **H** libre.
 3. **Alineación.** Cada adalid coloca hasta *campeones en batalla* cartas de su cuartel en su tablero de 3 × 5.

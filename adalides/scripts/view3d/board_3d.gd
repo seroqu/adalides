@@ -24,13 +24,46 @@ func _ready() -> void:
 	add_child(light)
 	var ambient := WorldEnvironment.new()
 	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.06, 0.06, 0.1)
+	env.background_mode = Environment.BG_SKY
+	var sky := Sky.new()
+	var sky_mat := ProceduralSkyMaterial.new()
+	sky_mat.sky_top_color = Color(0.04, 0.03, 0.09)
+	sky_mat.sky_horizon_color = Color(0.22, 0.1, 0.3)
+	sky_mat.ground_bottom_color = Color(0.03, 0.02, 0.05)
+	sky_mat.ground_horizon_color = Color(0.2, 0.08, 0.25)
+	sky_mat.sun_angle_max = 10
+	sky.sky_material = sky_mat
+	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.5, 0.5, 0.6)
-	env.ambient_light_energy = 0.8
+	env.ambient_light_color = Color(0.55, 0.5, 0.65)
+	env.ambient_light_energy = 0.9
+	env.glow_enabled = true
+	env.glow_intensity = 0.4
+	env.glow_bloom = 0.1
 	ambient.environment = env
 	add_child(ambient)
+	# Mesa bajo el tablero.
+	var table := MeshInstance3D.new()
+	var tm := BoxMesh.new()
+	tm.size = Vector3(Rules.BOARD_COLS * TILE + 2.4, 0.2, 2 * Rules.BOARD_ROWS * TILE + 3.2)
+	table.mesh = tm
+	var tmat := StandardMaterial3D.new()
+	tmat.albedo_color = Color(0.16, 0.1, 0.08)
+	tmat.roughness = 0.9
+	table.material_override = tmat
+	table.position = Vector3(world_x(2), -0.16, (world_z(0) + world_z(5)) / 2.0)
+	add_child(table)
+	var rim := MeshInstance3D.new()
+	var rm := BoxMesh.new()
+	rm.size = Vector3(Rules.BOARD_COLS * TILE + 0.5, 0.06, 2 * Rules.BOARD_ROWS * TILE + 0.5)
+	rim.mesh = rm
+	var rmat := StandardMaterial3D.new()
+	rmat.albedo_color = Color(0.5, 0.4, 0.18)
+	rmat.metallic = 0.6
+	rmat.roughness = 0.4
+	rim.material_override = rmat
+	rim.position = Vector3(world_x(2), -0.06, (world_z(0) + world_z(5)) / 2.0)
+	add_child(rim)
 	# Separador entre los dos tableros.
 	var bar := MeshInstance3D.new()
 	var bm := BoxMesh.new()

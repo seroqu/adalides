@@ -59,11 +59,13 @@ func setup(ch: Champion, p_side: int) -> void:
 		add_child(_elem)
 	_label = Label3D.new()
 	_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	_label.pixel_size = 0.0036
-	_label.font_size = 46
+	_label.pixel_size = 0.0034
+	_label.font_size = 42
 	_label.outline_size = 12
-	_label.position.y = 1.3
+	_label.outline_modulate = Color(0, 0, 0, 0.95)
 	_label.no_depth_test = true
+	# Tus fichas llevan la etiqueta delante (hacia la cámara); las del rival, encima.
+	_label.position = Vector3(0, 0.1, -0.48) if side == 0 else Vector3(0, 1.3, 0)
 	add_child(_label)
 	refresh()
 

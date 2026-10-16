@@ -573,15 +573,16 @@ func _phase_tier_hf() -> void:
 		var enemy := 1 - side
 		# Tormenta (Trueno): (1/2/4) dados; (1/2/4) de daño a los enemigos de esa columna. Trueno con 6.
 		var tormenta := esc(side, E.TRUENO, [1, 2, 4])
-		for _i in tormenta:
+		var caster := _any_of(side, E.TRUENO)
+		for _i in (tormenta if caster != null else 0):
 			var roll := Dice.roll(rng)
 			var col := (roll - 1) % Board.COLS # SUPUESTO: el dado señala la columna.
 			for victim in board.in_column(col, enemy):
-				deal_damage(_any_of(side, E.TRUENO), victim, esc(side, E.TRUENO, [1, 2, 4]), "electrocuta a", true)
+				deal_damage(caster, victim, esc(side, E.TRUENO, [1, 2, 4]), "electrocuta a", true)
 			if roll == 6:
 				var big := _strongest(enemy)
 				if big != null:
-					big.take_damage(big.hp, _any_of(side, E.TRUENO))
+					big.take_damage(big.hp, caster)
 					log_line("  ¡Trueno! %s cae fulminado." % big.data.display_name)
 		# Luz renovadora: cura (1/2/4) a todos los aliados heridos.
 		var luz := asc(side, A.ANGEL, [1, 2, 4])
