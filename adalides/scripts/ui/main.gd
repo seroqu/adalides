@@ -1,9 +1,12 @@
 extends Node3D
 ## Partida v2 en 3D: tú contra cinco IA. El tablero y las cartas del draft y
 ## del mercado viven en la escena 3D; las fases se controlan desde una capa 2D.
+## Los asaltos se resuelven solos y se animan evento a evento.
 
 const NAMES: PackedStringArray = ["Tú", "Bruno", "Carla", "Dani", "Eva", "Fito"]
 const AUTO_ROUND_SECONDS := 2.0
+const MARKET_SECONDS := 60
+const DRAG_THRESHOLD := 8.0
 
 var game: Game
 var board3d: Board3D
@@ -19,6 +22,14 @@ var phase_title: Label
 var hint: Label
 var hud: RichTextLabel
 var panels: Dictionary = {}
+var right_panel: PanelContainer
+# Celebraciones y efectos 2D
+var fx_layer: Control
+var banner: Label
+var banner_particles: CPUParticles2D
+var flash_rect: ColorRect
+var tier_label_top: Label
+var tier_label_bottom: Label
 # Draft y mercado (cartas sobre la mesa)
 var selected_card: ChampionData = null
 var table_busy: bool = false
@@ -27,6 +38,9 @@ var take_button: Button
 var skip_button: Button
 var buy_button: Button
 var market_detail: VBoxContainer
+var market_timer_label: Label
+var market_left: int = 0
+var market_timer: Timer
 # Habilidades
 var skills_panel: PanelContainer
 var skills_box: VBoxContainer
@@ -35,23 +49,27 @@ var upgrade_buttons: Dictionary = {}
 var refresh_button: Button
 var sell_button: Button
 var cuartel_box: HFlowContainer
+var cuartel_scroll: ScrollContainer
 var selected_cuartel: Champion = null
 # Alineación
 var lineup_box: HFlowContainer
 var lineup: Dictionary = {}
 var lineup_info: Label
 var pending_card: Champion = null
+# Arrastrar y soltar
+var drag: Dictionary = {}
+var drag_origin := Vector2.ZERO
+var drag_active: bool = false
+var drag_preview: PanelContainer
+var drag_preview_label: Label
+var drag_preview_icon: TextureRect
 # Batalla
 var battle_title: Label
 var battle_status: Label
 var pause_button: Button
-var dice_box: HBoxContainer
-var powers_box: HFlowContainer
-var manual_box: VBoxContainer
-var assignment: Dictionary = {}
-var selected_die: int = -1
-var used_dice: Array[int] = []
+var step_button: Button
 var battle_paused: bool = false
+var battle_playing: bool = false
 var _auto_token: int = 0
 
 
@@ -69,10 +87,10 @@ func _ready() -> void:
 func _build_world() -> void:
 	board3d = Board3D.new()
 	add_child(board3d)
-	board3d.tile_clicked.connect(_on_tile_clicked)
+	board3d.tile_clicked.connect(_on_tile_pressed)
 	table = DraftTable.new()
 	table.deck_clicked.connect(_on_deck_clicked)
-	table.card_clicked.connect(_on_table_card_clicked)
+	table.card_clicked.connect(_on_table_card_pressed)
 	table.visible = false
 	add_child(table)
 	camera = Camera3D.new()
@@ -94,7 +112,7 @@ func _build_ui() -> void:
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ui.add_child(root)
 
-	# Panel izquierdo: título, clasificación y registro.
+	# Panel izquierdo: título, clasificación y crónica.
 	var left := PanelContainer.new()
 	left.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
 	left.offset_left = 8
@@ -132,7 +150,7 @@ func _build_ui() -> void:
 	log_label.scroll_following = true
 	lv.add_child(log_label)
 
-	# Cabecera: fase, ayuda y HUD del jugador.
+	# Cabecera: fase, HUD y ayuda.
 	var head := PanelContainer.new()
 	head.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	head.offset_left = 352
@@ -166,13 +184,13 @@ func _build_ui() -> void:
 	hv.add_child(hint)
 
 	# Panel derecho: controles de la fase.
-	var right := PanelContainer.new()
-	right.set_anchors_and_offsets_preset(Control.PRESET_RIGHT_WIDE)
-	right.offset_left = -460
-	right.offset_right = -8
-	right.offset_top = 8
-	right.offset_bottom = -8
-	root.add_child(right)
+	right_panel = PanelContainer.new()
+	right_panel.set_anchors_and_offsets_preset(Control.PRESET_RIGHT_WIDE)
+	right_panel.offset_left = -460
+	right_panel.offset_right = -8
+	right_panel.offset_top = 8
+	right_panel.offset_bottom = -8
+	root.add_child(right_panel)
 	panels[Game.State.DRAFT] = _build_draft_panel()
 	panels[Game.State.MARKET] = _build_market_panel()
 	panels[Game.State.LINEUP] = _build_lineup_panel()
@@ -180,7 +198,7 @@ func _build_ui() -> void:
 	panels[Game.State.CYCLE_END] = _build_cycle_end_panel()
 	panels[Game.State.OVER] = _build_over_panel()
 	for p in panels.values():
-		right.add_child(p)
+		right_panel.add_child(p)
 
 	# Consulta de habilidades: cubre el tablero.
 	skills_panel = PanelContainer.new()
@@ -204,9 +222,80 @@ func _build_ui() -> void:
 	srow.add_child(close)
 	skills_box = VBoxContainer.new()
 	skills_box.add_theme_constant_override("separation", 6)
-	var ssc := _scroll(skills_box)
-	ssc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	sv.add_child(ssc)
+	sv.add_child(_scroll(skills_box))
+
+	# Capa de efectos 2D: destello, carteles de tier, celebraciones y arrastre.
+	fx_layer = Control.new()
+	fx_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	fx_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(fx_layer)
+	flash_rect = ColorRect.new()
+	flash_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	flash_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	flash_rect.color = Color(1, 1, 1, 0)
+	fx_layer.add_child(flash_rect)
+	tier_label_top = _tier_label(Control.PRESET_CENTER_TOP, 150)
+	tier_label_bottom = _tier_label(Control.PRESET_CENTER_BOTTOM, -60)
+	banner = GameTheme.title("", 54)
+	banner.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	banner.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	banner.grow_vertical = Control.GROW_DIRECTION_BOTH
+	banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	banner.pivot_offset = Vector2.ZERO
+	banner.visible = false
+	banner.add_theme_constant_override("outline_size", 14)
+	banner.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	fx_layer.add_child(banner)
+	banner_particles = CPUParticles2D.new()
+	banner_particles.emitting = false
+	banner_particles.one_shot = true
+	banner_particles.amount = 160
+	banner_particles.lifetime = 2.2
+	banner_particles.explosiveness = 0.9
+	banner_particles.direction = Vector2(0, -1)
+	banner_particles.spread = 80
+	banner_particles.initial_velocity_min = 250
+	banner_particles.initial_velocity_max = 650
+	banner_particles.gravity = Vector2(0, 500)
+	banner_particles.scale_amount_min = 3
+	banner_particles.scale_amount_max = 7
+	banner_particles.color = GameTheme.GOLD
+	fx_layer.add_child(banner_particles)
+	drag_preview = PanelContainer.new()
+	drag_preview.visible = false
+	drag_preview.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var dp := HBoxContainer.new()
+	dp.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	drag_preview.add_child(dp)
+	drag_preview_icon = TextureRect.new()
+	drag_preview_icon.custom_minimum_size = Vector2(32, 32)
+	drag_preview_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	drag_preview_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	drag_preview_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	dp.add_child(drag_preview_icon)
+	drag_preview_label = Label.new()
+	drag_preview_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	dp.add_child(drag_preview_label)
+	fx_layer.add_child(drag_preview)
+
+	market_timer = Timer.new()
+	market_timer.wait_time = 1.0
+	market_timer.timeout.connect(_on_market_tick)
+	add_child(market_timer)
+
+
+func _tier_label(preset: int, y: float) -> Label:
+	var l := GameTheme.title("", 30)
+	l.set_anchors_and_offsets_preset(preset)
+	l.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	l.offset_top += y
+	l.offset_bottom += y
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.visible = false
+	l.add_theme_constant_override("outline_size", 10)
+	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	fx_layer.add_child(l)
+	return l
 
 
 func _scroll(child: Control) -> ScrollContainer:
@@ -225,18 +314,13 @@ func _label(text: String) -> Label:
 	return l
 
 
-func _detail_box(parent: VBoxContainer) -> VBoxContainer:
-	var box := VBoxContainer.new()
-	box.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	parent.add_child(box)
-	return box
-
-
 func _build_draft_panel() -> Control:
 	var box := VBoxContainer.new()
 	box.add_child(GameTheme.heading("Draft inicial"))
-	box.add_child(_label("Pulsa el mazo para repartir. Luego pulsa una carta de la mesa para verla y «Tomar carta» para quedártela. Cada adalid toma 2."))
-	card_detail = _detail_box(box)
+	box.add_child(_label("Pulsa el mazo para repartir. Pulsa una carta de la mesa para verla y «Tomar carta», o arrástrala hasta este panel. Cada adalid toma 2."))
+	card_detail = VBoxContainer.new()
+	card_detail.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(card_detail)
 	var row := HBoxContainer.new()
 	box.add_child(row)
 	take_button = Button.new()
@@ -255,7 +339,15 @@ func _build_draft_panel() -> Control:
 
 func _build_market_panel() -> Control:
 	var box := VBoxContainer.new()
-	box.add_child(GameTheme.heading("Tablero personal"))
+	var trow := HBoxContainer.new()
+	box.add_child(trow)
+	var th := GameTheme.heading("Tablero personal")
+	th.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	trow.add_child(th)
+	market_timer_label = GameTheme.heading("⏱ 60 s")
+	market_timer_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	market_timer_label.custom_minimum_size.x = 70
+	trow.add_child(market_timer_label)
 	var row := HFlowContainer.new()
 	row.add_theme_constant_override("h_separation", 6)
 	row.add_theme_constant_override("v_separation", 6)
@@ -267,9 +359,10 @@ func _build_market_panel() -> Control:
 			_refresh_market())
 		row.add_child(b)
 		upgrade_buttons[track] = b
-	box.add_child(GameTheme.heading("Mercado — las cartas están sobre la mesa"))
-	market_detail = _detail_box(box)
-	market_detail.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	box.add_child(GameTheme.heading("Mercado"))
+	box.add_child(_label("Pulsa una carta de la mesa y «Comprar», o arrástrala hasta el cuartel."))
+	market_detail = VBoxContainer.new()
+	box.add_child(market_detail)
 	var mrow := HBoxContainer.new()
 	box.add_child(mrow)
 	buy_button = Button.new()
@@ -286,7 +379,8 @@ func _build_market_panel() -> Control:
 	cuartel_box = HFlowContainer.new()
 	cuartel_box.add_theme_constant_override("h_separation", 6)
 	cuartel_box.add_theme_constant_override("v_separation", 6)
-	box.add_child(_scroll(cuartel_box))
+	cuartel_scroll = _scroll(cuartel_box)
+	box.add_child(cuartel_scroll)
 	var brow := HBoxContainer.new()
 	box.add_child(brow)
 	sell_button = Button.new()
@@ -296,11 +390,7 @@ func _build_market_panel() -> Control:
 	var done := Button.new()
 	done.text = "Terminar compras →"
 	GameTheme.primary_button(done)
-	done.pressed.connect(func() -> void:
-		if table_busy:
-			return
-		game.finish_market()
-		_enter_state())
+	done.pressed.connect(_finish_market)
 	brow.add_child(done)
 	return box
 
@@ -308,7 +398,7 @@ func _build_market_panel() -> Control:
 func _build_lineup_panel() -> Control:
 	var box := VBoxContainer.new()
 	box.add_child(GameTheme.heading("Alineación"))
-	box.add_child(_label("Pulsa una carta del cuartel y luego una casilla de tu lado (azul). La fila junto a la línea dorada es el frente. Pulsa una ficha colocada para quitarla."))
+	box.add_child(_label("Arrastra una carta del cuartel a una casilla de tu lado (o púlsala y luego pulsa la casilla). Arrastra una ficha para moverla; suéltala fuera para quitarla. La fila junto a la línea dorada es el frente."))
 	lineup_info = _label("")
 	box.add_child(lineup_info)
 	lineup_box = HFlowContainer.new()
@@ -343,48 +433,19 @@ func _build_battle_panel() -> Control:
 	box.add_child(battle_title)
 	battle_status = _label("")
 	box.add_child(battle_status)
+	box.add_child(_label("Los dados de poder (dos caras de tres: −, neutra, +) se lanzan solos para cada campeón. Observa el tablero: los movimientos, el daño y los poderes se animan."))
 	var row := HBoxContainer.new()
 	box.add_child(row)
 	pause_button = Button.new()
-	pause_button.text = "⏸ Detener asalto"
+	pause_button.text = "⏸ Detener"
 	GameTheme.primary_button(pause_button)
 	pause_button.pressed.connect(_toggle_pause)
 	row.add_child(pause_button)
-	manual_box = VBoxContainer.new()
-	manual_box.add_theme_constant_override("separation", 6)
-	manual_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	box.add_child(manual_box)
-	manual_box.add_child(_label("Elige un dado y luego el campeón cuyo poder quieres activar. Sin dado, el campeón ataca."))
-	var drow := HFlowContainer.new()
-	drow.add_theme_constant_override("h_separation", 6)
-	manual_box.add_child(drow)
-	dice_box = HBoxContainer.new()
-	dice_box.add_theme_constant_override("separation", 6)
-	drow.add_child(dice_box)
-	var undo := Button.new()
-	undo.text = "Deshacer"
-	undo.pressed.connect(func() -> void:
-		_reset_assignment()
-		_refresh_battle())
-	drow.add_child(undo)
-	var auto := Button.new()
-	auto.text = "Asignar solo"
-	auto.pressed.connect(func() -> void:
-		_reset_assignment()
-		var auto_assigned: Dictionary = game.current_battle.auto_assign(0)
-		for ch in auto_assigned:
-			_assign(ch, auto_assigned[ch])
-		_refresh_battle())
-	drow.add_child(auto)
-	var resolve := Button.new()
-	resolve.text = "Resolver asalto →"
-	GameTheme.primary_button(resolve)
-	resolve.pressed.connect(_on_resolve)
-	drow.add_child(resolve)
-	powers_box = HFlowContainer.new()
-	powers_box.add_theme_constant_override("h_separation", 6)
-	powers_box.add_theme_constant_override("v_separation", 6)
-	manual_box.add_child(_scroll(powers_box))
+	step_button = Button.new()
+	step_button.text = "Siguiente asalto ▶"
+	step_button.visible = false
+	step_button.pressed.connect(_step_round)
+	row.add_child(step_button)
 	return box
 
 
@@ -476,11 +537,13 @@ func _add_skill_row(icon: Texture2D, color: Color, name: String, in_cuartel: int
 
 func _new_game() -> void:
 	_auto_token += 1
+	battle_playing = false
 	game = Game.new(NAMES, int(seed_spin.value))
 	game.set_human(0)
 	board3d.clear_pieces()
 	table.clear()
 	table.visible = false
+	market_timer.stop()
 	_next_cycle()
 
 
@@ -492,16 +555,23 @@ func _next_cycle() -> void:
 func _enter_state() -> void:
 	board3d.highlight_tiles([])
 	selected_card = null
+	drag.clear()
+	drag_preview.visible = false
+	if game.state != Game.State.MARKET:
+		market_timer.stop()
 	if game.state != Game.State.DRAFT and game.state != Game.State.MARKET:
 		table.clear()
 		table.visible = false
+	board3d.set_mat_visible(game.state not in [Game.State.DRAFT, Game.State.MARKET])
 	match game.state:
 		Game.State.DRAFT:
-			table.set_deck_label("Mazo del demiurgo\n(pulsa para repartir)")
 			board3d.clear_pieces()
+			_update_deck_label("(pulsa para repartir)")
 			_refresh_draft()
 		Game.State.MARKET:
 			board3d.clear_pieces()
+			market_left = MARKET_SECONDS
+			market_timer.start()
 			_refresh_market()
 			_deal_market()
 		Game.State.LINEUP:
@@ -510,9 +580,8 @@ func _enter_state() -> void:
 			_refresh_lineup()
 		Game.State.BATTLE:
 			battle_paused = false
-			_reset_assignment()
 			_refresh_battle()
-			_schedule_auto_round()
+			_start_battle_loop()
 		Game.State.CYCLE_END:
 			if not game.last_battles.is_empty():
 				board3d.sync(game.last_battles[-1].board.cells, false)
@@ -521,15 +590,18 @@ func _enter_state() -> void:
 			var w := game.winner()
 			if game.demiurge_wins:
 				res.text = "Los últimos adalides cayeron a la vez: gana el Demiurgo."
+				_celebrate("El Demiurgo se queda con todo", GameTheme.TEXT_DIM, false)
 			elif w == game.human:
 				res.text = "¡Eres el nuevo demiurgo!"
+				_celebrate("¡ERES EL NUEVO DEMIURGO!", GameTheme.GOLD, true)
 			else:
 				res.text = "Has sido eliminado. Gana %s." % (w.display_name if w != null else "nadie")
+				_celebrate("Gana %s" % (w.display_name if w != null else "nadie"), Color(0.9, 0.5, 0.5), false)
 	_refresh()
 
 
-func _preview_cuartel() -> void:
-	board3d.sync(Board3D.lineup_to_cells(Game.auto_lineup(game.human), 0), false)
+func _update_deck_label(extra := "") -> void:
+	table.set_deck_label("Mazo del demiurgo · %d cartas%s" % [game.deck.size(), ("\n" + extra) if extra != "" else ""])
 
 
 # ---------------------------------------------------------------- mesa: draft
@@ -542,7 +614,7 @@ func _refresh_draft() -> void:
 	elif table_busy:
 		hint.text = "Repartiendo..."
 	elif my_turn:
-		hint.text = "Te toca: pulsa una carta de la mesa y luego «Tomar carta»."
+		hint.text = "Te toca: pulsa una carta y «Tomar carta», o arrástrala al panel de la derecha."
 	else:
 		hint.text = "Eligen los demás adalides..."
 	_show_detail(card_detail, selected_card)
@@ -567,7 +639,7 @@ func _show_detail(box: VBoxContainer, card: ChampionData) -> void:
 	var cv := CardView.new()
 	var note := ""
 	if not game.human.can_add(card):
-		note = "no cabe en tu cuartel"
+		note = "no cabe en tu cuartel" if not card.hero else "necesitas un hueco de héroe (H)"
 	elif game.state == Game.State.MARKET and not game.human.can_pay(card.cost):
 		note = "no tienes Éter suficiente"
 	cv.setup(card, null, note)
@@ -582,7 +654,7 @@ func _on_deck_clicked() -> void:
 	if game.state != Game.State.DRAFT or table.dealt or table_busy:
 		return
 	table_busy = true
-	table.set_deck_label("Mazo del demiurgo")
+	_update_deck_label()
 	_refresh_draft()
 	await table.deal(game.draft_pool)
 	table_busy = false
@@ -604,15 +676,19 @@ func _draft_continue() -> void:
 		_enter_state()
 
 
-func _on_table_card_clicked(card: ChampionData) -> void:
+func _on_table_card_pressed(card: ChampionData) -> void:
 	if table_busy:
 		return
 	selected_card = card
 	table.select(card)
 	if game.state == Game.State.DRAFT:
 		_refresh_draft()
+		if game.draft_current() == game.human and game.human.can_add(card):
+			_begin_drag({ "kind": "table_card", "card": card }, Icons.archetype(card.archetype), card.display_name)
 	elif game.state == Game.State.MARKET:
 		_refresh_market()
+		if game.human.can_add(card) and game.human.can_pay(card.cost):
+			_begin_drag({ "kind": "table_card", "card": card }, Icons.archetype(card.archetype), card.display_name)
 
 
 func _on_take_card() -> void:
@@ -635,7 +711,7 @@ func _on_skip_draft() -> void:
 
 func _deal_market() -> void:
 	table.visible = true
-	table.set_deck_label("Mazo del demiurgo")
+	_update_deck_label()
 	table_busy = true
 	_refresh_market()
 	await table.deal(game.market)
@@ -645,7 +721,9 @@ func _deal_market() -> void:
 
 func _refresh_market() -> void:
 	var h := game.human
-	hint.text = "Pulsa una carta de la mesa y «Comprar». Mejora tu tablero y termina cuando quieras."
+	hint.text = "Compra con el tiempo que marca el reloj; al acabarse pasas a la alineación."
+	market_timer_label.text = "⏱ %d s" % market_left
+	market_timer_label.add_theme_color_override("font_color", Color(1, 0.4, 0.3) if market_left <= 10 else GameTheme.GOLD)
 	var names := { Adalid.Track.CUARTEL: "Cuartel", Adalid.Track.BATTLE: "En batalla", Adalid.Track.DICE: "Dados" }
 	for track in upgrade_buttons:
 		var b: Button = upgrade_buttons[track]
@@ -676,7 +754,29 @@ func _refresh_market() -> void:
 			_refresh_market())
 		cuartel_box.add_child(cv)
 	sell_button.disabled = selected_cuartel == null
+	_update_deck_label()
 	_refresh()
+
+
+func _on_market_tick() -> void:
+	if game.state != Game.State.MARKET:
+		market_timer.stop()
+		return
+	market_left -= 1
+	market_timer_label.text = "⏱ %d s" % market_left
+	market_timer_label.add_theme_color_override("font_color", Color(1, 0.4, 0.3) if market_left <= 10 else GameTheme.GOLD)
+	if market_left <= 0:
+		_finish_market()
+
+
+func _finish_market() -> void:
+	if game.state != Game.State.MARKET:
+		return
+	market_timer.stop()
+	if table_busy:
+		await get_tree().create_timer(0.6).timeout
+	game.finish_market()
+	_enter_state()
 
 
 func _on_buy_card() -> void:
@@ -708,19 +808,33 @@ func _on_sell() -> void:
 
 # ---------------------------------------------------------------- alineación
 
-func _on_tile_clicked(pos: Vector2i) -> void:
+func _on_tile_pressed(pos: Vector2i) -> void:
 	if game.state != Game.State.LINEUP or Board.side_of(pos) != 0:
 		return
 	var key := Vector2i(pos.x, Board.row_of(pos))
-	if lineup.has(key) and pending_card == null:
-		lineup.erase(key)
-	elif pending_card != null:
-		for k in lineup.keys():
-			if lineup[k] == pending_card:
-				lineup.erase(k)
-		lineup[key] = pending_card
+	if pending_card != null:
+		_place_in_lineup(pending_card, key)
 		pending_card = null
-	_refresh_lineup()
+		_refresh_lineup()
+	elif lineup.has(key):
+		var ch: Champion = lineup[key]
+		_begin_drag({ "kind": "piece", "champion": ch, "from": key }, Icons.archetype(ch.data.archetype), ch.data.display_name)
+
+
+func _place_in_lineup(ch: Champion, key: Vector2i) -> void:
+	for k in lineup.keys():
+		if lineup[k] == ch:
+			lineup.erase(k)
+	var other: Champion = lineup.get(key, null)
+	lineup[key] = ch
+	if other != null and other != ch:
+		# Intercambio: el que estaba va a la casilla libre más cercana o se queda fuera.
+		for row in range(1, Rules.BOARD_ROWS + 1):
+			for col in Rules.BOARD_COLS:
+				var k := Vector2i(col, row)
+				if not lineup.has(k):
+					lineup[k] = other
+					return
 
 
 func _refresh_lineup() -> void:
@@ -733,7 +847,9 @@ func _refresh_lineup() -> void:
 		cv.selected = ch == pending_card
 		cv.pressed.connect(func() -> void:
 			pending_card = null if pending_card == ch else ch
-			_refresh_lineup())
+			_refresh_lineup()
+			if pending_card != null:
+				_begin_drag({ "kind": "cuartel_card", "champion": ch }, Icons.archetype(ch.data.archetype), ch.data.display_name))
 		lineup_box.add_child(cv)
 	board3d.sync(Board3D.lineup_to_cells(lineup, 0), false)
 	var free: Array[Vector2i] = []
@@ -760,121 +876,279 @@ func _on_lineup_done() -> void:
 	_enter_state()
 
 
+# ---------------------------------------------------------------- arrastrar y soltar
+
+func _begin_drag(data: Dictionary, icon: Texture2D, text: String) -> void:
+	drag = data
+	drag_active = false
+	drag_origin = get_viewport().get_mouse_position()
+	drag_preview_icon.texture = icon
+	drag_preview_label.text = text
+	drag_preview.visible = false
+
+
+func _input(event: InputEvent) -> void:
+	if drag.is_empty():
+		return
+	if event is InputEventMouseMotion:
+		var pos: Vector2 = event.position
+		if not drag_active and pos.distance_to(drag_origin) > DRAG_THRESHOLD:
+			drag_active = true
+			drag_preview.visible = true
+		if drag_active:
+			drag_preview.position = pos + Vector2(14, 14)
+			if drag["kind"] == "table_card":
+				right_panel.modulate = Color(1.2, 1.15, 1.0) if right_panel.get_global_rect().has_point(pos) else Color.WHITE
+	elif event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_end_drag(event.position)
+
+
+func _end_drag(pos: Vector2) -> void:
+	var data := drag
+	var active := drag_active
+	drag = {}
+	drag_active = false
+	drag_preview.visible = false
+	right_panel.modulate = Color.WHITE
+	match data.get("kind", ""):
+		"cuartel_card":
+			if not active:
+				return # Fue un clic: queda seleccionada para colocar con otro clic.
+			var tile := _tile_under_mouse(pos)
+			if tile.x >= 0 and Board.side_of(tile) == 0:
+				_place_in_lineup(data["champion"], Vector2i(tile.x, Board.row_of(tile)))
+				pending_card = null
+			_refresh_lineup()
+		"piece":
+			var tile := _tile_under_mouse(pos)
+			var ch: Champion = data["champion"]
+			if tile.x >= 0 and Board.side_of(tile) == 0:
+				_place_in_lineup(ch, Vector2i(tile.x, Board.row_of(tile)))
+			else:
+				for k in lineup.keys():
+					if lineup[k] == ch:
+						lineup.erase(k)
+			_refresh_lineup()
+		"table_card":
+			if active and right_panel.get_global_rect().has_point(pos):
+				selected_card = data["card"]
+				if game.state == Game.State.DRAFT:
+					_on_take_card()
+				elif game.state == Game.State.MARKET:
+					_on_buy_card()
+
+
+func _tile_under_mouse(pos: Vector2) -> Vector2i:
+	var from := camera.project_ray_origin(pos)
+	var to := from + camera.project_ray_normal(pos) * 100.0
+	var query := PhysicsRayQueryParameters3D.create(from, to)
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return Vector2i(-1, -1)
+	return board3d.bodies.get(hit["collider"], Vector2i(-1, -1))
+
+
 # ---------------------------------------------------------------- batalla
 
-func _reset_assignment() -> void:
-	assignment.clear()
-	used_dice.clear()
-	selected_die = -1
-
-
-func _assign(ch: Champion, d: int) -> void:
-	var dice: Array = game.current_battle.dice[0]
-	for i in dice.size():
-		if dice[i] == d and not used_dice.has(i):
-			used_dice.append(i)
-			assignment[ch] = d
-			return
-
-
-func _on_die_pressed(i: int) -> void:
-	selected_die = -1 if selected_die == i else i
-	_refresh_battle()
-
-
-func _on_power_pressed(ch: Champion) -> void:
-	if selected_die < 0:
-		return
-	used_dice.append(selected_die)
-	assignment[ch] = game.current_battle.dice[0][selected_die]
-	selected_die = -1
-	_refresh_battle()
-
-
-## Los asaltos se resuelven solos cada AUTO_ROUND_SECONDS salvo que el jugador los detenga.
-func _schedule_auto_round() -> void:
+func _start_battle_loop() -> void:
 	_auto_token += 1
-	var token := _auto_token
-	var battle := game.current_battle
-	await get_tree().create_timer(AUTO_ROUND_SECONDS).timeout
-	if token != _auto_token or battle_paused or game.state != Game.State.BATTLE or game.current_battle != battle:
-		return
-	_reset_assignment()
-	var auto_assigned: Dictionary = game.current_battle.auto_assign(0)
-	for ch in auto_assigned:
-		_assign(ch, auto_assigned[ch])
-	_commit_round()
+	_battle_loop(_auto_token)
+
+
+func _battle_loop(token: int) -> void:
+	while token == _auto_token and game.state == Game.State.BATTLE and game.current_battle != null and not battle_paused:
+		await _play_round()
+		if token != _auto_token or game.state != Game.State.BATTLE or battle_paused:
+			return
+		var left := AUTO_ROUND_SECONDS
+		while left > 0.0 and token == _auto_token and not battle_paused and game.state == Game.State.BATTLE:
+			battle_status.text = "Siguiente asalto en %.1f s." % left
+			await get_tree().create_timer(0.25).timeout
+			left -= 0.25
 
 
 func _toggle_pause() -> void:
 	battle_paused = not battle_paused
-	if not battle_paused:
-		_schedule_auto_round()
-	else:
+	if battle_paused:
 		_auto_token += 1
+	else:
+		_start_battle_loop()
 	_refresh_battle()
 
 
-func _on_resolve() -> void:
-	_commit_round()
+func _step_round() -> void:
+	if battle_playing or game.state != Game.State.BATTLE:
+		return
+	await _play_round()
 
 
-func _commit_round() -> void:
-	game.commit_human_dice(assignment)
-	if game.current_battle != null:
-		_reset_assignment()
-		_refresh_battle()
-		if not battle_paused:
-			_schedule_auto_round()
-	else:
+## Resuelve un asalto y lo anima evento a evento.
+func _play_round() -> void:
+	if battle_playing or game.current_battle == null:
+		return
+	battle_playing = true
+	var battle := game.current_battle
+	battle.commit_round()
+	var evs := battle.events.duplicate()
+	_refresh()
+	await _animate_events(battle, evs)
+	var finished := not battle.begin_round()
+	battle_playing = false
+	if finished:
+		game.advance()
+		_announce_battle(battle)
 		_enter_state()
+	else:
+		_refresh_battle()
+
+
+func _announce_battle(battle: Battle) -> void:
+	var r := battle.result
+	if r.get("tie", false):
+		_celebrate("Empate", GameTheme.TEXT_DIM, false)
+	elif r.get("winner") == game.human:
+		_celebrate("¡VICTORIA!", GameTheme.GOLD, true)
+	else:
+		_celebrate("Derrota", Color(0.95, 0.45, 0.4), false)
+
+
+func _animate_events(battle: Battle, evs: Array) -> void:
+	for e in evs:
+		if game.current_battle != battle:
+			return
+		var ch: Champion = e.get("ch", null)
+		var piece: ChampionPiece = board3d.piece_of(ch) if ch != null else null
+		match e["type"]:
+			"move":
+				if piece != null:
+					var tw := create_tween()
+					tw.tween_property(piece, "position", Board3D.world_pos(e["to"]), 0.28).set_trans(Tween.TRANS_SINE)
+					await tw.finished
+			"attack":
+				var target_piece: ChampionPiece = board3d.piece_of(e["target"])
+				if piece != null and target_piece != null:
+					if ch.data.reach() == 1:
+						await piece.lunge(target_piece.position).finished
+					else:
+						Fx.beam(board3d, piece.position, target_piece.position, Icons.color_of(ch.data))
+						await get_tree().create_timer(0.2).timeout
+			"damage":
+				if piece != null:
+					piece.show_hp(e["hp"])
+					if e["amount"] > 0:
+						piece.flash(Color.WHITE)
+						piece.shake()
+						Fx.float_text(board3d, piece.position, "-%d" % e["amount"], Color(1, 0.35, 0.3))
+						Fx.burst(board3d, piece.position + Vector3(0, 0.5, 0), Color(1, 0.3, 0.2) if not e["power"] else Color(1, 0.6, 0.2), 14, 0.05)
+					else:
+						Fx.float_text(board3d, piece.position, "0", Color(0.7, 0.7, 0.7), 40)
+					await get_tree().create_timer(0.22).timeout
+			"heal":
+				if piece != null:
+					piece.show_hp(e["hp"])
+					Fx.float_text(board3d, piece.position, "+%d" % e["amount"], Color(0.5, 1, 0.5))
+					Fx.burst(board3d, piece.position + Vector3(0, 0.5, 0), Color(0.5, 1, 0.5), 16, 0.05)
+					await get_tree().create_timer(0.2).timeout
+			"power":
+				if piece != null:
+					var color: Color = Icons.ELEMENT_COLORS.get(e.get("element", -1), GameTheme.GOLD)
+					Fx.ring(board3d, piece.position, color, 1.0)
+					Fx.burst(board3d, piece.position + Vector3(0, 0.6, 0), color, 36, 0.07)
+					Fx.float_text(board3d, piece.position + Vector3(0, 0.4, 0), e["name"], Color(1, 0.9, 0.6), 48)
+					await get_tree().create_timer(0.45).timeout
+			"tier":
+				var color: Color = Icons.ELEMENT_COLORS.get(e.get("element", -1), GameTheme.GOLD)
+				var side: int = e["side"]
+				var center := Vector3(Board3D.world_x(2), 0, Board3D.world_z(1) if side == 0 else Board3D.world_z(4))
+				Fx.ring(board3d, center, color, 3.0)
+				if piece != null:
+					Fx.burst(board3d, piece.position + Vector3(0, 0.6, 0), color, 30, 0.07)
+				_tier_banner(side, e["name"], color)
+				_screen_flash(color)
+				await get_tree().create_timer(0.6).timeout
+			"dodge":
+				if piece != null:
+					Fx.float_text(board3d, piece.position, "¡esquiva!", Color(0.7, 0.95, 1), 44)
+					await get_tree().create_timer(0.18).timeout
+			"freeze":
+				if piece != null:
+					piece.refresh()
+					piece.flash(Color(0.6, 0.85, 1))
+					Fx.float_text(board3d, piece.position, "❄ congelado", Color(0.6, 0.85, 1), 44)
+					await get_tree().create_timer(0.18).timeout
+			"curse":
+				if piece != null:
+					piece.refresh()
+					Fx.float_text(board3d, piece.position, "☠ maldito", Color(0.8, 0.5, 1), 44)
+					await get_tree().create_timer(0.18).timeout
+			"death":
+				if piece != null:
+					Fx.burst(board3d, piece.position + Vector3(0, 0.4, 0), Color(0.5, 0.5, 0.55), 30, 0.08)
+					Fx.float_text(board3d, piece.position, "✖", Color(0.9, 0.9, 0.9), 60)
+					await get_tree().create_timer(0.25).timeout
+	board3d.sync(battle.board.cells, true)
+	_refresh()
+
+
+func _tier_banner(side: int, text: String, color: Color) -> void:
+	var l := tier_label_bottom if side == 0 else tier_label_top
+	l.text = text
+	l.add_theme_color_override("font_color", color)
+	l.visible = true
+	l.modulate = Color(1, 1, 1, 0)
+	l.scale = Vector2(0.6, 0.6)
+	l.pivot_offset = l.size / 2.0
+	var tw := create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(l, "modulate:a", 1.0, 0.15)
+	tw.tween_property(l, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.chain().tween_interval(0.7)
+	tw.chain().tween_property(l, "modulate:a", 0.0, 0.3)
+	tw.chain().tween_callback(func() -> void: l.visible = false)
+
+
+func _screen_flash(color: Color) -> void:
+	flash_rect.color = Color(color.r, color.g, color.b, 0.22)
+	var tw := create_tween()
+	tw.tween_property(flash_rect, "color:a", 0.0, 0.45)
+
+
+## Cartel grande con partículas: victoria/derrota de una batalla y fin de la partida.
+func _celebrate(text: String, color: Color, big: bool) -> void:
+	banner.text = text
+	banner.add_theme_color_override("font_color", color)
+	banner.visible = true
+	banner.modulate = Color(1, 1, 1, 0)
+	banner.scale = Vector2(0.4, 0.4)
+	await get_tree().process_frame
+	banner.pivot_offset = banner.size / 2.0
+	banner.position = (fx_layer.size - banner.size) / 2.0
+	var tw := create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(banner, "modulate:a", 1.0, 0.2)
+	tw.tween_property(banner, "scale", Vector2.ONE, 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.chain().tween_interval(2.2 if big else 1.4)
+	tw.chain().tween_property(banner, "modulate:a", 0.0, 0.5)
+	tw.chain().tween_callback(func() -> void: banner.visible = false)
+	if big:
+		banner_particles.position = fx_layer.size / 2.0 + Vector2(0, 60)
+		banner_particles.color = color
+		banner_particles.restart()
+		banner_particles.emitting = true
+		_screen_flash(color)
 
 
 func _refresh_battle() -> void:
 	var battle := game.current_battle
 	if battle == null:
 		return
-	hint.text = "Las fichas con anillo rojo son del rival. Detén el asalto para asignar tú los dados."
+	hint.text = "Fichas con anillo rojo: rival. Detén la batalla para verla asalto a asalto."
 	battle_title.text = "Batalla contra %s — asalto %d de %d" % [battle.adalids[1].display_name, battle.round_no, Rules.ROUNDS_PER_BATTLE]
-	battle_status.text = ("Detenido: asigna los dados y pulsa «Resolver asalto»." if battle_paused
-		else "Automático: el siguiente asalto se resuelve en %d s." % int(AUTO_ROUND_SECONDS))
-	pause_button.text = "▶ Reanudar automático" if battle_paused else "⏸ Detener asalto"
-	manual_box.visible = battle_paused
-	board3d.sync(battle.board.cells, true)
-	for c in dice_box.get_children():
-		c.queue_free()
-	var dice: Array = battle.dice[0]
-	for i in dice.size():
-		var b := Button.new()
-		b.text = Rules.die_label(dice[i])
-		b.custom_minimum_size = Vector2(52, 36)
-		b.toggle_mode = true
-		b.button_pressed = selected_die == i
-		b.disabled = used_dice.has(i)
-		b.pressed.connect(_on_die_pressed.bind(i))
-		dice_box.add_child(b)
-	for c in powers_box.get_children():
-		c.queue_free()
-	for ch in battle.board.champions(0):
-		if not ch.data.has_power():
-			continue
-		var req: Array = ch.data.power_requirement()
-		var parts: PackedStringArray = []
-		for r in req:
-			parts.append(Rules.die_label(r))
-		var extra := "%s · %s" % ["cualquier dado" if req.is_empty() else " o ".join(parts),
-			"pasivo" if ch.data.power_is_passive() else "activo"]
-		if assignment.has(ch):
-			extra += " · ← %s" % Rules.die_label(assignment[ch])
-		elif not Powers.is_implemented(ch.data.id):
-			extra += " · sin efecto aún"
-		var cv := CardView.new()
-		cv.setup(ch.data, ch, extra)
-		cv.selected = assignment.has(ch)
-		cv.disabled = selected_die < 0 or assignment.has(ch) or not ch.can_act() \
-			or not Dice.meets(dice[selected_die] if selected_die >= 0 else -1, req)
-		cv.pressed.connect(_on_power_pressed.bind(ch))
-		powers_box.add_child(cv)
+	battle_status.text = "Detenida. Pulsa «Siguiente asalto» para avanzar." if battle_paused else "Automática: un asalto cada %d s." % int(AUTO_ROUND_SECONDS)
+	pause_button.text = "▶ Reanudar" if battle_paused else "⏸ Detener"
+	step_button.visible = battle_paused
+	if not battle_playing:
+		board3d.sync(battle.board.cells, true)
 	_refresh()
 
 
@@ -929,36 +1203,44 @@ func _screenshot_tour(dir: String) -> void:
 			if pick == null:
 				await _on_skip_draft()
 			else:
-				_on_table_card_clicked(pick)
+				selected_card = pick
+				table.select(pick)
+				_refresh_draft()
 				await _on_take_card()
 		while table_busy:
 			await get_tree().process_frame
 	while table_busy:
 		await get_tree().process_frame
 	if game.state == Game.State.MARKET and not game.market.is_empty():
-		_on_table_card_clicked(game.market[0])
+		selected_card = game.market[0]
+		table.select(selected_card)
+		_refresh_market()
 	await _snap(dir.path_join("2_mercado.png"))
 	_toggle_skills()
 	await _snap(dir.path_join("2_habilidades.png"))
 	_toggle_skills()
 	if game.state == Game.State.MARKET:
 		await _on_buy_card()
-		game.finish_market()
-		_enter_state()
+		_finish_market()
 		pending_card = game.human.cuartel[0]
 		_refresh_lineup()
 		await _snap(dir.path_join("3_alineacion.png"))
 		pending_card = null
 		_on_lineup_done()
 	if game.state == Game.State.BATTLE:
-		await _snap(dir.path_join("4_batalla_auto.png"))
 		_toggle_pause()
-		if not game.current_battle.dice[0].is_empty():
-			_on_die_pressed(0)
-		await _snap(dir.path_join("5_batalla_detenida.png"))
-		_on_resolve()
-		await get_tree().create_timer(0.5).timeout
+		await _snap(dir.path_join("4_batalla.png"))
+		_step_round()
+		await get_tree().create_timer(0.9).timeout
+		await _snap(dir.path_join("5_batalla_animando.png"))
+		while battle_playing:
+			await get_tree().process_frame
 		await _snap(dir.path_join("6_batalla_resuelta.png"))
+		_toggle_pause()
+		while game.state == Game.State.BATTLE:
+			await get_tree().process_frame
+		await get_tree().create_timer(0.6).timeout
+		await _snap(dir.path_join("7_resultado.png"))
 	get_tree().quit()
 
 

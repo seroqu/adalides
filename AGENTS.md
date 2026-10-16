@@ -60,7 +60,6 @@ Decisiones del autor:
 - Los tiers se cuentan con los campeones en batalla.
 - La marca "inactiva" del tablero físico no se implementa.
 - Las filas 1 de los dos tableros se enfrentan (confirmado el 2026-10-16).
-- En el primer ciclo no se cobra nada: se empieza con 30 de Éter.
 
 Supuestos del código:
 - El bono de racha es el número de la casilla (5, 10, …, 30 de Éter). Probablemente excesivo: preguntar.
@@ -88,8 +87,10 @@ valida y lanza las batallas de la tabla hasta la del humano (`BATTLE`). En batal
 dados y `commit_human_dice({Champion: Rules.Die})` resuelve el asalto. `advance()` termina el ciclo
 (`CYCLE_END` u `OVER`). Sin humano, `play_cycle()` lo hace todo con la IA: así corren las pruebas.
 
-Lo que sigue decidiendo el motor por el humano: movimiento y objetivo de cada campeón (reglas de prioridad del PDF),
-a quién afecta cada poder (el objetivo del campeón o el aliado más conveniente).
+Lo que decide el motor por el humano: la asignación de dados a poderes, movimiento y objetivo de cada campeón
+(reglas de prioridad del PDF) y a quién afecta cada poder. La UI resuelve cada asalto con `Battle.commit_round()`,
+lee `Battle.events` (move / attack / damage / heal / power / tier / dodge / freeze / curse / death) y los anima
+(`main.gd: _animate_events`) antes de `begin_round()`.
 
 ## Convenciones
 

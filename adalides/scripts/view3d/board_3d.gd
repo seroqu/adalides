@@ -9,11 +9,15 @@ signal tile_clicked(pos: Vector2i)
 const TILE := 1.1
 
 var tiles: Dictionary = {} # Vector2i → MeshInstance3D
+var bodies: Dictionary = {} # StaticBody3D → Vector2i (para el raycast del arrastre)
 var pieces: Dictionary = {} # Champion → ChampionPiece
 var highlighted: Array[Vector2i] = []
+var tiles_root: Node3D # Las casillas y la línea central (se ocultan en el mercado).
 
 
 func _ready() -> void:
+	tiles_root = Node3D.new()
+	add_child(tiles_root)
 	for y in 2 * Rules.BOARD_ROWS:
 		for x in Rules.BOARD_COLS:
 			_make_tile(Vector2i(x, y))
@@ -75,7 +79,7 @@ func _ready() -> void:
 	mat.emission = Color(0.9, 0.8, 0.3) * 0.5
 	bar.material_override = mat
 	bar.position = Vector3(world_x(2), 0.03, (world_z(2) + world_z(3)) / 2.0)
-	add_child(bar)
+	tiles_root.add_child(bar)
 
 
 ## La cámara mira hacia +Z, así que +X queda a la izquierda en pantalla;
@@ -109,8 +113,9 @@ func _make_tile(pos: Vector2i) -> void:
 	body.input_event.connect(func(_cam: Node, event: InputEvent, _p: Vector3, _n: Vector3, _i: int) -> void:
 		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 			tile_clicked.emit(pos))
-	add_child(body)
+	tiles_root.add_child(body)
 	tiles[pos] = mesh
+	bodies[body] = pos
 
 
 func _tile_material(pos: Vector2i, highlight: bool) -> StandardMaterial3D:
@@ -134,6 +139,14 @@ func highlight_tiles(positions: Array[Vector2i]) -> void:
 	highlighted = positions.duplicate()
 	for pos in highlighted:
 		tiles[pos].material_override = _tile_material(pos, true)
+
+
+func set_mat_visible(v: bool) -> void:
+	tiles_root.visible = v
+
+
+func piece_of(ch: Champion) -> ChampionPiece:
+	return pieces.get(ch, null)
 
 
 func clear_pieces() -> void:

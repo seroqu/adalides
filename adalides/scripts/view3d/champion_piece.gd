@@ -70,6 +70,42 @@ func setup(ch: Champion, p_side: int) -> void:
 	refresh()
 
 
+## Muestra una vida concreta (durante la animación de un asalto).
+func show_hp(hp: int) -> void:
+	_hp_override = hp
+	refresh()
+	_hp_override = -1
+
+
+var _hp_override: int = -1
+
+
+func flash(color: Color) -> void:
+	var mat: StandardMaterial3D = _base.material_override
+	var original := Icons.color_of(champion.data)
+	var tw := create_tween()
+	tw.tween_property(mat, "albedo_color", color, 0.08)
+	tw.tween_property(mat, "albedo_color", original, 0.3)
+
+
+func shake() -> void:
+	var origin := position
+	var tw := create_tween()
+	for i in 4:
+		tw.tween_property(self, "position", origin + Vector3(0.08 if i % 2 == 0 else -0.08, 0, 0), 0.04)
+	tw.tween_property(self, "position", origin, 0.04)
+
+
+## Embestida hacia un punto y vuelta (ataque cuerpo a cuerpo).
+func lunge(target: Vector3) -> Tween:
+	var origin := position
+	var toward := origin.lerp(target, 0.35)
+	var tw := create_tween()
+	tw.tween_property(self, "position", toward, 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(self, "position", origin, 0.18).set_trans(Tween.TRANS_SINE)
+	return tw
+
+
 func refresh() -> void:
 	if champion == null:
 		return
@@ -81,9 +117,10 @@ func refresh() -> void:
 	if champion.cursed:
 		tags.append("☠")
 	var name := champion.data.display_name.replace(" de ", "\nde ")
-	_label.text = "%s\n%d/%d %s" % [name, champion.hp, champion.max_hp(), " ".join(tags)]
-	_label.modulate = Color.WHITE if champion.alive else Color(0.5, 0.5, 0.5)
-	var ratio := float(champion.hp) / maxf(champion.max_hp(), 1)
+	var hp := champion.hp if _hp_override < 0 else _hp_override
+	_label.text = "%s\n%d/%d %s" % [name, hp, champion.max_hp(), " ".join(tags)]
+	_label.modulate = Color.WHITE if (champion.alive or _hp_override > 0) else Color(0.5, 0.5, 0.5)
+	var ratio := float(hp) / maxf(champion.max_hp(), 1)
 	_base.scale = Vector3(1, maxf(ratio, 0.2), 1)
 	if champion.stealth:
 		_arch.modulate = Color(1, 1, 1, 0.45)

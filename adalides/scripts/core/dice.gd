@@ -1,6 +1,6 @@
 class_name Dice
 extends RefCounted
-## Dados d6 y d20. Resultado de d6: 1 = pifia (--), 2-3 = fallo (-), 4-5 = acierto (+), 6 = crítico (++).
+## Dados de poder (dos d3: −/neutra/+), d6 auxiliar y d20.
 
 
 static func roll(rng: RandomNumberGenerator) -> int:
@@ -18,6 +18,33 @@ static func roll_many(rng: RandomNumberGenerator, count: int) -> Array[int]:
 	return rolls
 
 
+## Una cara de d3: −1, 0 o +1.
+static func roll_d3(rng: RandomNumberGenerator) -> int:
+	return rng.randi_range(-1, 1)
+
+
+## Tirada de poder: dos d3 sumados → Rules.Die.
+static func roll_die(rng: RandomNumberGenerator) -> Rules.Die:
+	return classify_sum(roll_d3(rng) + roll_d3(rng))
+
+
+static func roll_dice(rng: RandomNumberGenerator, count: int) -> Array:
+	var out: Array = []
+	for _i in count:
+		out.append(roll_die(rng))
+	return out
+
+
+static func classify_sum(total: int) -> Rules.Die:
+	match clampi(total, -2, 2):
+		-2: return Rules.Die.PIFIA
+		-1: return Rules.Die.FALLO
+		0: return Rules.Die.NEUTRO
+		1: return Rules.Die.ACIERTO
+	return Rules.Die.CRITICO
+
+
+## Compatibilidad con tiradas de d6 (1 = --, 2-3 = -, 4-5 = +, 6 = ++).
 static func classify(value: int) -> Rules.Die:
 	if value <= 1:
 		return Rules.Die.PIFIA
@@ -32,7 +59,11 @@ static func is_hit(value: int) -> bool:
 	return value >= 4
 
 
-## Hackeo (Robot 6): empeora un rango: ++ → +, + → -, - → --.
+static func die_is_hit(d: Rules.Die) -> bool:
+	return d >= Rules.Die.ACIERTO
+
+
+## Hackeo (Robot 6): empeora un rango: ++ → +, + → ○, ○ → -, - → --.
 static func worsen(d: Rules.Die) -> Rules.Die:
 	return maxi(d - 1, Rules.Die.PIFIA) as Rules.Die
 

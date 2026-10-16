@@ -31,11 +31,21 @@ func check(cond: bool, msg: String) -> void:
 
 
 func test_dice() -> void:
-	check(Dice.classify(1) == Rules.Die.PIFIA, "1 es pifia (--)")
-	check(Dice.classify(2) == Rules.Die.FALLO and Dice.classify(3) == Rules.Die.FALLO, "2-3 es fallo (-)")
-	check(Dice.classify(4) == Rules.Die.ACIERTO and Dice.classify(5) == Rules.Die.ACIERTO, "4-5 es acierto (+)")
-	check(Dice.classify(6) == Rules.Die.CRITICO, "6 es crítico (++)")
-	check(Dice.worsen(Rules.Die.CRITICO) == Rules.Die.ACIERTO and Dice.worsen(Rules.Die.PIFIA) == Rules.Die.PIFIA, "Hackeo empeora un rango")
+	check(Dice.classify_sum(-2) == Rules.Die.PIFIA, "dos caras − es pifia (--)")
+	check(Dice.classify_sum(-1) == Rules.Die.FALLO, "una − y una neutra es fallo (-)")
+	check(Dice.classify_sum(0) == Rules.Die.NEUTRO, "suma 0 es neutro")
+	check(Dice.classify_sum(1) == Rules.Die.ACIERTO, "una + y una neutra es acierto (+)")
+	check(Dice.classify_sum(2) == Rules.Die.CRITICO, "dos caras + es crítico (++)")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4
+	var seen := {}
+	for d in Dice.roll_dice(rng, 300):
+		seen[d] = true
+		check(d >= Rules.Die.PIFIA and d <= Rules.Die.CRITICO, "resultado válido")
+	check(seen.size() == 5, "con 300 tiradas salen los cinco resultados")
+	check(Dice.worsen(Rules.Die.CRITICO) == Rules.Die.ACIERTO and Dice.worsen(Rules.Die.ACIERTO) == Rules.Die.NEUTRO
+		and Dice.worsen(Rules.Die.PIFIA) == Rules.Die.PIFIA, "Hackeo empeora un rango")
+	check(not Dice.meets(Rules.Die.NEUTRO, [Rules.Die.ACIERTO, Rules.Die.CRITICO]) and Dice.meets(Rules.Die.NEUTRO, []), "el neutro solo activa poderes sin requisito")
 	check(Dice.meets(Rules.Die.ACIERTO, [Rules.Die.ACIERTO, Rules.Die.CRITICO]), "+ cumple un requisito de +/++")
 	check(not Dice.meets(Rules.Die.FALLO, [Rules.Die.CRITICO]), "- no cumple ++")
 	check(Dice.d20_to_cell(15) == 15 and Dice.d20_to_cell(16) == -1, "d20 señala casillas 1..15")
@@ -159,6 +169,10 @@ func test_battle_basics() -> void:
 	var battle := Battle.new(a, b, [{ Vector2i(2, 1): tank }, { Vector2i(2, 1): weak }], rng, 1)
 	var result := battle.run()
 	check(result["winner"] == a, "un defensor 1/10 gana a un arquero 1/3 (dura %d asaltos)" % result["rounds"])
+	var kinds := {}
+	for e in battle.events:
+		kinds[e["type"]] = true
+	check(kinds.has("attack") and kinds.has("damage"), "la batalla registra eventos de ataque y daño")
 	check(b.life == 29 and a.life == 30, "la batalla 1 quita 1 de vida al perdedor")
 	check(b.streak == 1 and not b.streak_is_win and a.streak_is_win, "se registra la racha")
 	# Empate: ambos pierden.
@@ -243,7 +257,8 @@ func test_human_flow() -> void:
 			check(g.set_lineup(Game.auto_lineup(g.human)).is_empty(), "la automática vale")
 		while g.state == Game.State.BATTLE:
 			rounds += 1
-			g.commit_human_dice(g.current_battle.auto_assign(0))
+			check(g.current_battle.events.is_empty() or g.current_battle.round_no > 1, "los eventos se limpian al empezar el asalto")
+			g.auto_round()
 			check(rounds < 5000, "la batalla humana no se queda en bucle")
 		check(g.state == Game.State.CYCLE_END or g.state == Game.State.OVER, "el ciclo termina en un estado conocido")
 	check(g.is_over(), "la partida con humano termina")

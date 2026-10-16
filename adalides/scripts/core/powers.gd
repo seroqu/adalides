@@ -35,6 +35,7 @@ static func use(b: Battle, ch: Champion) -> void:
 	var v := ch.power_value()
 	var afi := ch.afi()
 	b.log_line("  %s usa %s." % [ch.data.display_name, name])
+	b.ev({ "type": "power", "ch": ch, "name": name, "element": ch.data.element, "archetype": ch.data.archetype })
 	match String(ch.data.id):
 		# --- Ángel ---
 		"angel_fuego":
@@ -45,7 +46,9 @@ static func use(b: Battle, ch: Champion) -> void:
 			for _i in v:
 				var row := (Dice.roll(b.rng) - 1) % Board.ROWS + 1 # SUPUESTO: el dado señala la fila.
 				for ally in b.board.in_row(row, side):
-					ally.heal(1 + afi)
+					var healed := ally.heal(1 + afi)
+					if healed > 0:
+						b.ev({ "type": "heal", "ch": ally, "amount": healed, "hp": ally.hp })
 				b.log_line("    Curación relámpago en la fila %d." % row)
 		"angel_tierra":
 			var revived := 0
@@ -54,6 +57,7 @@ static func use(b: Battle, ch: Champion) -> void:
 					break
 				if not dead.alive and dead.died_this_round and Board.distance(pos, b.board.pos_of(dead)) <= 2:
 					dead.revive(1 + afi)
+					b.ev({ "type": "heal", "ch": dead, "amount": dead.hp, "hp": dead.hp })
 					revived += 1
 					b.log_line("    %s resucita con %d." % [dead.data.display_name, 1 + afi])
 		# --- Demonio ---
@@ -92,6 +96,7 @@ static func use(b: Battle, ch: Champion) -> void:
 			if target != null:
 				for victim in b.board.within(b.board.pos_of(target), v, enemy):
 					victim.frozen += 1
+					b.ev({ "type": "freeze", "ch": victim })
 					b.deal_damage(ch, victim, 1 + afi, "hiela a", true)
 		"arquero_trueno":
 			for _i in v:
@@ -174,6 +179,7 @@ static func use(b: Battle, ch: Champion) -> void:
 						b.deal_damage(ch, victim, ch.attack(), "corta a", true)
 					else:
 						victim.frozen += 1
+						b.ev({ "type": "freeze", "ch": victim })
 						b.log_line("    %s queda congelado." % victim.data.display_name)
 		"asesino_tierra":
 			for ally in b.board.within(pos, v, side):
@@ -192,6 +198,7 @@ static func use(b: Battle, ch: Champion) -> void:
 			for victim in b.board.within(pos, v):
 				if victim != ch:
 					victim.frozen += 1
+					b.ev({ "type": "freeze", "ch": victim })
 					frozen += 1
 			if frozen > 0:
 				b._produce(side, frozen, ch)

@@ -180,8 +180,9 @@ func _begin_market() -> void:
 		_begin_battles()
 
 
-func _draw_market(a: Adalid) -> Array[ChampionData]:
-	return deck.draw(Rules.MARKET_SIZE, a.hero_slots() > a.hero_count())
+## El mercado muestra héroes aunque no quepan (el autor quiere verlos).
+func _draw_market(_a: Adalid) -> Array[ChampionData]:
+	return deck.draw(Rules.MARKET_SIZE, true)
 
 
 # --- acciones del humano en el mercado ---
@@ -301,6 +302,15 @@ func commit_human_dice(assignment: Dictionary) -> void:
 		advance()
 
 
+## Resuelve el asalto en curso con los dados asignados internamente.
+func auto_round() -> void:
+	if state != State.BATTLE or current_battle == null:
+		return
+	current_battle.commit_round()
+	if not current_battle.begin_round():
+		advance()
+
+
 func _after_battle(battle: Battle) -> void:
 	last_battles.append(battle)
 	log.append_array(battle.log)
@@ -353,19 +363,44 @@ func _end_cycle() -> void:
 
 # ---------------------------------------------------------------- IA
 
-## Puntúa una carta para un adalid: sinergia con lo que ya tiene y valor por coste.
+## Puntúa una carta para un adalid: busca combos. Premia el elemento y el
+## arquetipo que más tiene, alcanzar el siguiente tier, duplicar y el valor por coste.
 static func card_score(a: Adalid, card: ChampionData) -> float:
 	var elems := Tiers.count_elements(a.cuartel)
 	var archs := Tiers.count_archetypes(a.cuartel)
+	var best_elem := _argmax(elems)
+	var best_arch := _argmax(archs)
 	var score := 0.0
 	if card.element >= 0:
-		score += elems.get(card.element, 0)
+		var n: int = elems.get(card.element, 0)
+		score += n * 1.5
+		if card.element == best_elem:
+			score += 3.0
+		if Rules.tier_index(n + 1, Rules.ELEMENT_TIERS) > Rules.tier_index(n, Rules.ELEMENT_TIERS):
+			score += 5.0 # Completa un tier elemental.
 	for arch in card.archetypes():
-		score += archs.get(arch, 0)
+		var n: int = archs.get(arch, 0)
+		score += n * 1.5
+		if arch == best_arch:
+			score += 3.0
+		if Rules.tier_index(n + 1, Rules.ARCHETYPE_TIERS) > Rules.tier_index(n, Rules.ARCHETYPE_TIERS):
+			score += 5.0 # Completa un tier de arquetipo.
 	var owned := a.find_card(card.id)
 	if owned != null:
-		score += 2.0 # Duplicar da +1/+1 y mejora el poder.
+		score += 2.5 + owned.copies # Duplicar da +1/+1, poder mejorado y AFI.
+	if card.hero:
+		score += 4.0
 	return score + (card.attack + card.defense) / float(maxi(card.cost, 1))
+
+
+static func _argmax(counts: Dictionary) -> int:
+	var best := -1
+	var best_n := 0
+	for k in counts:
+		if counts[k] > best_n:
+			best = k
+			best_n = counts[k]
+	return best
 
 
 func ai_pick(a: Adalid, pool: Array[ChampionData]) -> ChampionData:

@@ -5,6 +5,7 @@ extends Node3D
 ## abajo y se voltea con `flip()`.
 
 signal pressed
+signal released(screen_pos: Vector2)
 
 const W := 0.74
 const H := 1.04
@@ -110,8 +111,11 @@ func setup(p_card: ChampionData) -> void:
 	shape.shape = cs
 	body.add_child(shape)
 	body.input_event.connect(func(_c: Node, event: InputEvent, _p: Vector3, _n: Vector3, _i: int) -> void:
-		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-			pressed.emit())
+		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+			if event.pressed:
+				pressed.emit()
+			else:
+				released.emit(event.position))
 	add_child(body)
 	rotation_degrees.z = 180 # Boca abajo.
 

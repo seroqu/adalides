@@ -4,6 +4,7 @@ extends Node3D
 
 signal deck_clicked
 signal card_clicked(card: ChampionData)
+signal card_released(card: ChampionData, screen_pos: Vector2)
 
 const COLS := 6
 const SPACING_X := 0.82
@@ -81,6 +82,7 @@ func deal(pool: Array[ChampionData]) -> void:
 		c.rotation_degrees.x = -28 # Inclinada hacia la cámara.
 		add_child(c)
 		c.pressed.connect(func() -> void: card_clicked.emit(card))
+		c.released.connect(func(screen_pos: Vector2) -> void: card_released.emit(card, screen_pos))
 		cards.append(c)
 		var target := slot_position(i, pool.size())
 		var tw := create_tween()

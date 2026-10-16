@@ -41,9 +41,13 @@ const AFI_BY_COPIES := { 1: 0, 2: 0, 3: 1, 4: 2 } # 3.ª copia AFI 1, 4.ª AFI 2
 const MAX_COPIES := 4
 
 # --- Dados ---
-const DICE_SIDES := 6
-enum Die { PIFIA, FALLO, ACIERTO, CRITICO } # -- / - / + / ++
-const DIE_LABELS := { Die.PIFIA: "--", Die.FALLO: "-", Die.ACIERTO: "+", Die.CRITICO: "++" }
+## Dados de poder: dos dados de 3 caras (−, neutra, +) por tirada. La suma da
+## el resultado: −2 = pifia (--), −1 = fallo (-), 0 = neutro, +1 = acierto (+),
+## +2 = crítico (++). Decisión del autor: todo ocurre internamente, el jugador
+## no asigna dados.
+const DICE_SIDES := 6 # d6 auxiliar (columnas/filas).
+enum Die { PIFIA, FALLO, NEUTRO, ACIERTO, CRITICO } # -- / - / ○ / + / ++
+const DIE_LABELS := { Die.PIFIA: "--", Die.FALLO: "-", Die.NEUTRO: "○", Die.ACIERTO: "+", Die.CRITICO: "++" }
 
 enum Element { FUEGO, TRUENO, TIERRA, AIRE, HIELO }
 enum Archetype { ROBOT, SALVAJE, ANGEL, DEMONIO, MAGO, ARQUERO, DEFENSOR, ASESINO, PIRATA, MUERTO }

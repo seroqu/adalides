@@ -19,6 +19,8 @@ var adalids: Array[Adalid] = []
 var elem_tiers: Array[Dictionary] = [{}, {}]
 var arch_tiers: Array[Dictionary] = [{}, {}]
 var dice: Array = [[], []] # Resultados (Rules.Die) lanzados este asalto por lado.
+## Eventos del asalto en curso, para animarlos: { "type": ..., ... }.
+var events: Array[Dictionary] = []
 var eter_produced: Array[int] = [0, 0]
 var faith_dice: Array = [[], []] # Pacto de fe: campeones con dado de fe.
 var started := false
@@ -47,6 +49,10 @@ func _init(a: Adalid, b: Adalid, lineups: Array, p_rng: RandomNumberGenerator, p
 
 func log_line(line: String) -> void:
 	log.append(line)
+
+
+func ev(data: Dictionary) -> void:
+	events.append(data)
 
 
 func etier(side: int, e: int) -> int:
@@ -157,13 +163,14 @@ func begin_round() -> bool:
 	if is_finished():
 		return false
 	round_no += 1
+	events.clear()
 	log_line("--- Asalto %d ---" % round_no)
 	for side in 2:
 		for ch in board.champions(side):
 			ch.reset_for_round()
 		var rolled: Array = []
-		for v in Dice.roll_many(rng, adalids[side].dice_count()):
-			var d := Dice.classify(v)
+		for d0 in Dice.roll_dice(rng, adalids[side].dice_count()):
+			var d: Rules.Die = d0
 			if atier(1 - side, A.ROBOT) >= 3:
 				d = Dice.worsen(d) # Hackeo del rival.
 			rolled.append(d)
@@ -200,10 +207,10 @@ func auto_assign(side: int) -> Dictionary:
 	return assigned
 
 
-## Resuelve el asalto con las asignaciones de dados de cada lado.
-func commit_round(assign_by_side: Array) -> void:
+## Resuelve el asalto. Sin argumento, los dados se asignan solos en ambos lados.
+func commit_round(assign_by_side: Array = []) -> void:
 	for side in 2:
-		var assigned: Dictionary = assign_by_side[side]
+		var assigned: Dictionary = assign_by_side[side] if assign_by_side.size() > side else auto_assign(side)
 		var used := []
 		for ch in assigned:
 			var d: int = assigned[ch]
@@ -213,8 +220,8 @@ func commit_round(assign_by_side: Array) -> void:
 				continue
 			ch.die = d
 			used.append(d)
-			log_line("  %s asigna %s a %s (%s)." % [adalids[side].display_name, Rules.die_label(d),
-				ch.data.display_name, ch.data.power.get("name", "?")])
+			log_line("  %s: %s saca %s para %s." % [adalids[side].display_name, ch.data.display_name,
+				Rules.die_label(d), ch.data.power.get("name", "?")])
 	_phase_tier_hi()
 	_phase_powers(P.HI)
 	_phase_move()
@@ -270,9 +277,11 @@ func _phase_move() -> void:
 		var steps := Rules.BASE_MOVE + asc(ch.side, A.SALVAJE, [1, 2, 4]) if ch.data.has_archetype(A.SALVAJE) else Rules.BASE_MOVE
 		var moved := 0
 		while moved < steps and Board.distance(board.pos_of(ch), board.pos_of(target)) > ch.data.reach():
-			var step := _step_toward(board.pos_of(ch), board.pos_of(target))
+			var from := board.pos_of(ch)
+			var step := _step_toward(from, board.pos_of(target))
 			if step.x < 0 or not board.move(ch, step):
 				break
+			ev({ "type": "move", "ch": ch, "from": from, "to": step })
 			moved += 1
 		if moved > 0:
 			var p := board.pos_of(ch)
@@ -341,14 +350,17 @@ func basic_attack(attacker: Champion, target: Champion) -> void:
 			log_line("  Retribución: %s recibe %d." % [name, 1 + angel.afi()])
 	if target.dodge_basic:
 		log_line("  %s ataca a %s, que se lo quita de encima con el viento." % [name, target.data.display_name])
+		ev({ "type": "dodge", "ch": target })
 		return
 	# Céfiro: los aire esquivan según el dado.
 	if target.data.element == E.AIRE and etier(enemy, E.AIRE) > 0:
 		var need: Array = [[D.CRITICO], [D.CRITICO, D.ACIERTO], [D.CRITICO, D.ACIERTO, D.FALLO]][etier(enemy, E.AIRE) - 1]
-		if need.has(Dice.classify(Dice.roll(rng))):
+		if need.has(Dice.roll_die(rng)):
 			log_line("  %s ataca a %s, pero el aire lo esquiva (Céfiro)." % [name, target.data.display_name])
+			ev({ "type": "dodge", "ch": target })
 			_on_dodge(enemy)
 			return
+	ev({ "type": "attack", "ch": attacker, "target": target })
 	var left_stealth := attacker.stealth
 	if left_stealth:
 		attacker.stealth = false
@@ -358,7 +370,7 @@ func basic_attack(attacker: Champion, target: Champion) -> void:
 	# A los puntos vitales: el arquero duplica su daño básico.
 	if attacker.data.has_archetype(A.ARQUERO) and atier(side, A.ARQUERO) > 0:
 		var need: Array = [[D.CRITICO], [D.CRITICO], [D.CRITICO, D.ACIERTO]][atier(side, A.ARQUERO) - 1]
-		if need.has(Dice.classify(Dice.roll(rng))):
+		if need.has(Dice.roll_die(rng)):
 			damage += attacker.base_attack()
 			log_line("  ¡A los puntos vitales! %s duplica su daño." % name)
 	var dealt := deal_damage(attacker, target, damage, "ataca")
@@ -391,7 +403,7 @@ func basic_attack(attacker: Champion, target: Champion) -> void:
 	# Capa negra: al matar, puede volver al sigilo.
 	if left_stealth and not target.alive and attacker.data.has_archetype(A.ASESINO) and atier(side, A.ASESINO) > 0:
 		var need: Array = [[D.CRITICO], [D.CRITICO, D.ACIERTO], [D.CRITICO, D.ACIERTO, D.FALLO]][atier(side, A.ASESINO) - 1]
-		if need.has(Dice.classify(Dice.roll(rng))):
+		if need.has(Dice.roll_die(rng)):
 			attacker.stealth = true
 			log_line("  %s vuelve a las sombras (Capa negra)." % name)
 
@@ -429,6 +441,7 @@ func deal_damage(source: Champion, target: Champion, amount: int, verb: String, 
 				receiver = ally
 				break
 	var dealt := receiver.take_damage(amount, source)
+	ev({ "type": "damage", "ch": receiver, "amount": dealt, "hp": receiver.hp, "power": is_power })
 	log_line("  %s %s %s: %d de daño%s." % [source.data.display_name, verb, receiver.data.display_name, dealt,
 		"" if receiver == target else " (bloquea por %s)" % target.data.display_name])
 	if dealt > 0 and receiver.die >= 0 and receiver.data.id == Catalog.id_for(A.ROBOT, E.TRUENO) and _power_active(receiver):
@@ -453,13 +466,17 @@ func _after_hit(attacker: Champion, target: Champion, dealt: int) -> void:
 	# Venas heladas / Quebrar.
 	if attacker.data.element == E.HIELO and etier(side, E.HIELO) > 0 and target.alive:
 		if target.frozen > 0:
+			var hp := target.hp
 			target.take_damage(target.hp, attacker)
+			ev({ "type": "damage", "ch": target, "amount": hp, "hp": 0, "power": true })
+			ev({ "type": "tier", "side": side, "name": "Quebrar", "element": E.HIELO })
 			log_line("  Quebrar: %s se resquebraja." % target.data.display_name)
 			_on_kill(attacker, target)
 		else:
 			var need: Array = [[D.CRITICO], [D.CRITICO, D.ACIERTO], [D.CRITICO, D.ACIERTO, D.FALLO]][etier(side, E.HIELO) - 1]
-			if need.has(Dice.classify(Dice.roll(rng))):
+			if need.has(Dice.roll_die(rng)):
 				target.frozen += 1
+				ev({ "type": "freeze", "ch": target })
 				log_line("  Venas heladas congela a %s." % target.data.display_name)
 	# Cauterizar: la vida máxima del enemigo baja a lo que le queda.
 	if attacker.data.id == Catalog.id_for(A.DEFENSOR, E.FUEGO) and _power_active(attacker) and target.alive:
@@ -487,12 +504,14 @@ func _on_kill(killer: Champion, victim: Champion) -> void:
 	# Maldición: matar a un demonio maldice.
 	if victim.data.has_archetype(A.DEMONIO) and atier(vside, A.DEMONIO) > 0:
 		killer.cursed = true
+		ev({ "type": "curse", "ch": killer })
 		log_line("  %s queda maldito por matar a %s." % [killer.data.display_name, victim.data.display_name])
 	# Tatuko: el pirata que mata lanza un dado.
 	if killer.data.has_archetype(A.PIRATA) and atier(killer.side, A.PIRATA) > 0:
 		var t := atier(killer.side, A.PIRATA)
 		var adalid := adalids[killer.side]
-		match Dice.classify(Dice.roll(rng)):
+		ev({ "type": "tier", "side": killer.side, "name": "Tatuko", "archetype": A.PIRATA })
+		match Dice.roll_die(rng):
 			D.PIFIA:
 				adalid.lose_life(Tiers.scaled(t, [2, 1, 0]))
 				log_line("  Tatuko: disparo en el pie, %s pierde %d de vida." % [adalid.display_name, Tiers.scaled(t, [2, 1, 0])])
@@ -515,8 +534,11 @@ func _phase_tier_hi() -> void:
 		for ch in board.champions(side):
 			if ch.cursed and atier(enemy, A.DEMONIO) > 0:
 				var need: Array = [[D.CRITICO], [D.CRITICO, D.ACIERTO], [D.CRITICO, D.ACIERTO, D.FALLO]][atier(enemy, A.DEMONIO) - 1]
-				if need.has(Dice.classify(Dice.roll(rng))):
+				if need.has(Dice.roll_die(rng)):
+					var hp := ch.hp
 					ch.take_damage(ch.hp)
+					ev({ "type": "tier", "side": enemy, "name": "Maldición", "archetype": A.DEMONIO })
+					ev({ "type": "damage", "ch": ch, "amount": hp, "hp": 0, "power": true })
 					log_line("  La maldición consume a %s." % ch.data.display_name)
 		# Herejía: (1/2/3) d20; los enemigos en esas casillas pierden sus habilidades este asalto.
 		var herejia := asc(side, A.DEMONIO, [1, 2, 3])
@@ -527,6 +549,7 @@ func _phase_tier_hi() -> void:
 			var victim := board.at(Board.pos_from_cell(enemy, cell))
 			if victim != null and victim.alive and victim.die >= 0:
 				victim.die = -1
+				ev({ "type": "tier", "side": side, "name": "Herejía", "archetype": A.DEMONIO, "ch": victim })
 				log_line("  Herejía silencia a %s." % victim.data.display_name)
 		# Magia desatada: (1/2/4) d20; los aliados ahí usan su poder como si el dado fuera (-/+/++).
 		var magia := asc(side, A.MAGO, [1, 2, 4])
@@ -538,6 +561,7 @@ func _phase_tier_hi() -> void:
 			var ally := board.at(Board.pos_from_cell(side, cell))
 			if ally != null and ally.alive and ally.data.has_power():
 				ally.die = forced[atier(side, A.MAGO) - 1]
+				ev({ "type": "tier", "side": side, "name": "Magia desatada", "archetype": A.MAGO, "ch": ally })
 				log_line("  Magia desatada: %s actúa con %s." % [ally.data.display_name, Rules.die_label(ally.die)])
 		# Tifón: (1/2/4) d20; los enemigos ahí son arrastrados (1/2/3) hacia atrás.
 		var tifon := esc(side, E.AIRE, [1, 2, 4])
@@ -547,24 +571,30 @@ func _phase_tier_hi() -> void:
 				continue
 			var victim := board.at(Board.pos_from_cell(enemy, cell))
 			if victim != null and victim.alive:
+				ev({ "type": "tier", "side": side, "name": "Tifón", "element": E.AIRE, "ch": victim })
 				_push(victim, Board.backward(enemy), esc(side, E.AIRE, [1, 2, 3]), esc(side, E.AIRE, [1, 2, 3]))
 
 
 ## Empuja `steps` casillas; si choca con otro o con el borde, ambos reciben `crash` daño verdadero.
 func _push(victim: Champion, dir: Vector2i, steps: int, crash: int) -> void:
 	for _i in steps:
-		var next := board.pos_of(victim) + dir
+		var from := board.pos_of(victim)
+		var next := from + dir
 		if not Board.in_bounds(next):
 			victim.take_damage(crash)
+			ev({ "type": "damage", "ch": victim, "amount": crash, "hp": victim.hp, "power": true })
 			log_line("  %s choca contra el borde: %d de daño." % [victim.data.display_name, crash])
 			return
 		var other := board.at(next)
 		if other != null:
 			victim.take_damage(crash)
 			other.take_damage(crash)
+			ev({ "type": "damage", "ch": victim, "amount": crash, "hp": victim.hp, "power": true })
+			ev({ "type": "damage", "ch": other, "amount": crash, "hp": other.hp, "power": true })
 			log_line("  %s choca con %s: %d de daño a ambos." % [victim.data.display_name, other.data.display_name, crash])
 			return
 		board.move(victim, next)
+		ev({ "type": "move", "ch": victim, "from": from, "to": next })
 	log_line("  %s es arrastrado %d casillas." % [victim.data.display_name, steps])
 
 
@@ -574,33 +604,43 @@ func _phase_tier_hf() -> void:
 		# Tormenta (Trueno): (1/2/4) dados; (1/2/4) de daño a los enemigos de esa columna. Trueno con 6.
 		var tormenta := esc(side, E.TRUENO, [1, 2, 4])
 		var caster := _any_of(side, E.TRUENO)
+		if caster != null and tormenta > 0:
+			ev({ "type": "tier", "side": side, "name": "Tormenta", "element": E.TRUENO })
 		for _i in (tormenta if caster != null else 0):
-			var roll := Dice.roll(rng)
-			var col := (roll - 1) % Board.COLS # SUPUESTO: el dado señala la columna.
+			var col := rng.randi_range(0, Board.COLS - 1) # SUPUESTO: un d6 señala la columna.
 			for victim in board.in_column(col, enemy):
 				deal_damage(caster, victim, esc(side, E.TRUENO, [1, 2, 4]), "electrocuta a", true)
-			if roll == 6:
+			# Trueno: con un crítico en el dado de tormenta, cae el enemigo con más vida máxima.
+			if Dice.roll_die(rng) == D.CRITICO:
 				var big := _strongest(enemy)
 				if big != null:
+					var hp := big.hp
 					big.take_damage(big.hp, caster)
+					ev({ "type": "tier", "side": side, "name": "¡Trueno!", "element": E.TRUENO, "ch": big })
+					ev({ "type": "damage", "ch": big, "amount": hp, "hp": 0, "power": true })
 					log_line("  ¡Trueno! %s cae fulminado." % big.data.display_name)
 		# Luz renovadora: cura (1/2/4) a todos los aliados heridos.
 		var luz := asc(side, A.ANGEL, [1, 2, 4])
 		if luz > 0:
+			ev({ "type": "tier", "side": side, "name": "Luz renovadora", "archetype": A.ANGEL })
 			for ch in board.champions(side):
 				if ch.hp < ch.max_hp():
-					ch.heal(luz)
+					var healed := ch.heal(luz)
+					ev({ "type": "heal", "ch": ch, "amount": healed, "hp": ch.hp })
 			log_line("  Luz renovadora cura %d a los heridos de %s." % [luz, adalids[side].display_name])
 		# Resurrección: (4/2/1) dados; si todos aciertan, vuelven los muertos de este asalto.
 		var res := asc(side, A.ANGEL, [4, 2, 1])
-		if res > 0 and Dice.roll_many(rng, res).all(func(v: int) -> bool: return Dice.is_hit(v)):
+		if res > 0 and Dice.roll_dice(rng, res).all(func(d: Rules.Die) -> bool: return Dice.die_is_hit(d)):
 			for ch in board.champions(side, false):
 				if not ch.alive and ch.died_this_round:
 					ch.revive(ch.max_hp())
+					ev({ "type": "tier", "side": side, "name": "Resurrección", "archetype": A.ANGEL, "ch": ch })
+					ev({ "type": "heal", "ch": ch, "amount": ch.hp, "hp": ch.hp })
 					log_line("  Resurrección: %s vuelve." % ch.data.display_name)
 		# Marchitar: los vivos enemigos pierden (1/2/2) de ataque.
 		var marchitar := asc(side, A.MUERTO, [1, 2, 2])
 		if marchitar > 0:
+			ev({ "type": "tier", "side": side, "name": "Marchitar", "archetype": A.MUERTO })
 			for ch in board.champions(enemy):
 				if not ch.data.has_archetype(A.MUERTO):
 					ch.attack_bonus -= marchitar
@@ -624,6 +664,7 @@ func _strongest(side: int) -> Champion:
 
 func _end_of_round() -> void:
 	for ch in board.clear_dead():
+		ev({ "type": "death", "ch": ch })
 		log_line("%s cae." % ch.data.display_name)
 	for side in 2:
 		log_line("%s: %s" % [adalids[side].display_name, " / ".join(board.describe(side))])
@@ -641,7 +682,7 @@ func finish() -> Dictionary:
 	for side in 2:
 		var heals := 0
 		for ch in faith_dice[side]:
-			if ch.alive and Dice.is_hit(Dice.roll(rng)):
+			if ch.alive and Dice.die_is_hit(Dice.roll_die(rng)):
 				heals += 1
 		if heals > 0:
 			adalids[side].gain_life(heals)
@@ -681,7 +722,7 @@ func finish() -> Dictionary:
 		adalids[w].display_name, advantage, adalids[l].display_name, loss, adalids[l].life])
 	# Venganza pirata del perdedor.
 	if atier(l, A.PIRATA) >= 3:
-		match Dice.classify(Dice.roll(rng)):
+		match Dice.roll_die(rng):
 			D.FALLO:
 				aftermath.append({ "type": "sabotage", "adalid": adalids[w] })
 				log_line("  Venganza: sabotaje al tablero de %s." % adalids[w].display_name)

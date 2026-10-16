@@ -38,16 +38,23 @@ en pie es el nuevo demiurgo. Si los dos últimos caen a la vez, gana el Demiurgo
 
 ## Dados
 
-Todos los dados de poder son d6:
+Los dados de poder son **dados de tres caras**: una cara `−`, una neutra y una `+`. Cada tirada lanza **dos**
+y se suman (*Decisión del autor: todo ocurre internamente; el jugador no asigna dados*):
 
-| Resultado | Símbolo | Nombre |
-|-----------|---------|--------|
-| 1 | `--` | Pifia |
-| 2–3 | `-` | Fallo |
-| 4–5 | `+` | Acierto |
-| 6 | `++` | Crítico |
+| Suma | Símbolo | Nombre | Probabilidad |
+|------|---------|--------|--------------|
+| −2 | `--` | Pifia | 1/9 |
+| −1 | `-` | Fallo | 2/9 |
+| 0 | `○` | Neutro | 3/9 |
+| +1 | `+` | Acierto | 2/9 |
+| +2 | `++` | Crítico | 1/9 |
 
-Algunas habilidades usan un **d20** para señalar casillas (1–15; 16–20 no señalan nada), filas o columnas.
+Un poder con requisito (`++`, `+ o ++`, `-`…) solo se activa si la suma coincide; un poder sin requisito se activa con
+cualquier resultado, incluido el neutro. Cada asalto el adalid lanza tantos dados como marque su pista de **Dados**
+y el motor los reparte entre los campeones cuyos poderes los acepten (los activos sustituyen al ataque básico,
+los pasivos se suman). El *Trueno* de la Tormenta cae con un `++`.
+
+Algunas habilidades usan un **d20** para señalar casillas (1–15; 16–20 no señalan nada) y un d6 para columnas o filas.
 
 ## Tablero personal
 
@@ -79,8 +86,11 @@ Recordatorios impresos en el tablero:
 1. **Draft** (solo en el primer ciclo). Se muestran **3 × jugadores** cartas del mazo del demiurgo (nunca héroes;
    si salen se reemplazan). Cada adalid toma **2**, por turnos en orden de serpiente (estilo Catan).
    *Supuesto:* empieza quien tiene menos vida.
-2. **Mercado y mejoras.** Cada adalid cobra, compra cartas del mercado (4 cartas; refrescar cuesta 2), vende y mejora
-   su tablero personal. Los héroes cuestan **10** y solo caben si hay un hueco **H** libre.
+2. **Mercado y mejoras.** Cada adalid cobra (salvo en el primer ciclo), compra cartas del mercado (4 cartas;
+   refrescar cuesta 2), vende y mejora su tablero personal. La fase dura **60 segundos** en la versión digital.
+   Los héroes cuestan **10**, aparecen en el mercado aunque no quepan y solo se pueden comprar con un hueco **H** libre.
+   El mazo del demiurgo es **finito**: las cartas que tienen los demás adalides no vuelven a salir hasta que se vendan
+   o su dueño sea eliminado.
 3. **Alineación.** Cada adalid coloca hasta *campeones en batalla* cartas de su cuartel en su tablero de 3 × 5.
 4. **Batallas.** Antes de cada ciclo los contrincantes toman una **ficha de destino**: las batallas siguen la tabla.
 
@@ -120,9 +130,11 @@ Los campeones actúan solos:
 
 ### Asalto
 
-Una batalla son **4 asaltos**. Al empezar cada asalto el adalid lanza tantos dados como marque su pista de dados y los
-asigna a campeones: cada poder necesita un dado y (a veces) un resultado concreto. Un **poder activo (PA)** sustituye la
-acción del campeón; un **poder pasivo (PP)** se suma a su acción normal. Sin dado, el campeón ataca. El orden es:
+Una batalla son **4 asaltos**. Al empezar cada asalto el adalid lanza tantos dados como marque su pista de dados y el
+motor los reparte entre sus campeones: cada poder necesita un dado y (a veces) un resultado concreto. Un **poder activo
+(PA)** sustituye la acción del campeón; un **poder pasivo (PP)** se suma a su acción normal. Sin dado, el campeón ataca.
+En la versión digital los asaltos se resuelven solos cada 2 segundos y se animan (movimientos, daño, poderes y tiers);
+se pueden detener y avanzar de uno en uno. El orden es:
 
 1. **HI** — Habilidad instantánea
 2. **M** — Movimiento
