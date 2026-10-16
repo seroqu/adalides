@@ -42,7 +42,9 @@ del juego (README v1: sinergias 3/5/7, DA+DP, estertores) quedó obsoleta el 202
     │   ├── data/catalog.gd      50 campeones base + 5 héroes con stats, precios y poderes (Catalog)
     │   ├── ui/main.gd           Partida jugable: tú contra 5 IA (menú, barra superior, columna lateral, mano)
     │   ├── ui/card_view.gd      Carta 2D (mano y detalle); ui/game_theme.gd tema; ui/icons.gd iconos y texturas
-    │   └── view3d/              Tablero, fichas con modelos GLB, cartas 3D (card_3d.gd) y mesa del draft
+    │   └── view3d/              Tablero, fichas con modelos GLB, cartas 3D (card_3d.gd), mesa del draft,
+    │                            efectos (fx.gd) y decorado compartido (deco.gd: sellos, braseros, motas)
+    ├── assets/particles/        Sprites de partículas del Particle Pack de Kenney (CC0); Fx.tex("nombre")
     ├── assets/icons/            SVG de arquetipos y elementos (game-icons.net, CC BY; ver CREDITS.md), marco, dorso y sello
     ├── assets/models/           GLB por arquetipo generados con tools/build_champions.py (Blender)
     └── tools/build_champions.py Construye y anima los diez modelos en Blender

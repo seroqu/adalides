@@ -133,7 +133,11 @@ func _build_world() -> void:
 	_camera_view(View.BOARD, false)
 
 
-enum View { BOARD, DRAFT, MARKET }
+enum View { BOARD, DRAFT, MARKET, LINEUP }
+
+
+static func world_z_mid() -> float:
+	return (Board3D.world_z(0) + Board3D.world_z(2)) / 2.0 - 0.2
 
 
 ## Vista de la cámara: sobre el tablero de batalla o, en draft y mercado, cerca de las cartas.
@@ -150,6 +154,10 @@ func _camera_view(view: View, animate := true) -> void:
 		from = Vector3(-1.1, 6.0, -2.9)
 		at = Vector3(-1.1, 0.0, 1.6)
 		v_off = -0.55
+	elif view == View.LINEUP:
+		from = center + Vector3(0, 7.2, -6.0)
+		at = Vector3(center.x, 0, world_z_mid())
+		v_off = -0.6
 	else:
 		from = center + Vector3(0, 9.2, -5.4)
 		at = center + Vector3(0, 0, 0.2)
@@ -538,6 +546,7 @@ func _show_main_menu() -> void:
 func _decorate_board() -> void:
 	board3d.clear_pieces()
 	board3d.set_mat_visible(true)
+	board3d.set_enemy_side_visible(true)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 7
 	var pool := Catalog.base_cards()
@@ -1046,10 +1055,13 @@ func _enter_state() -> void:
 		table.visible = false
 	var at_table := game.state in [Game.State.DRAFT, Game.State.MARKET]
 	board3d.set_mat_visible(not at_table)
+	board3d.set_enemy_side_visible(game.state != Game.State.LINEUP)
 	if game.state == Game.State.DRAFT:
 		_camera_view(View.DRAFT, true)
 	elif game.state == Game.State.MARKET:
 		_camera_view(View.MARKET, true)
+	elif game.state == Game.State.LINEUP:
+		_camera_view(View.LINEUP, true)
 	else:
 		_camera_view(View.BOARD, true)
 	match game.state:

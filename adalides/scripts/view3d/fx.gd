@@ -3,6 +3,63 @@ extends RefCounted
 ## Efectos de batalla: estallidos de partículas, textos flotantes y destellos.
 
 
+static var _tex_cache := {}
+
+
+## Textura del paquete de partículas de Kenney (assets/particles).
+static func tex(name: String) -> Texture2D:
+	var path := "res://assets/particles/%s.png" % name
+	if not _tex_cache.has(path):
+		_tex_cache[path] = load(path)
+	return _tex_cache[path]
+
+
+## Material de sprite aditivo, teñible, para partículas y destellos.
+static func sprite_material(name: String, color: Color, additive := true, billboard_particles := true) -> StandardMaterial3D:
+	var mat := StandardMaterial3D.new()
+	mat.albedo_texture = tex(name)
+	mat.albedo_color = color
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD if additive else BaseMaterial3D.BLEND_MODE_MIX
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.vertex_color_use_as_albedo = true
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES if billboard_particles else BaseMaterial3D.BILLBOARD_ENABLED
+	mat.billboard_keep_scale = true
+	return mat
+
+
+## Malla de partícula con sprite (quad de 1×1 con la textura indicada).
+static func sprite_mesh(name: String, color: Color, additive := true) -> QuadMesh:
+	var q := QuadMesh.new()
+	q.size = Vector2.ONE
+	q.material = sprite_material(name, color, additive)
+	return q
+
+
+## Emisor continuo o de un disparo con sprites; quien llama lo coloca y lo enciende.
+static func sprite_particles(name: String, color: Color, amount: int, lifetime: float, size_min: float, size_max: float, additive := true) -> CPUParticles3D:
+	var p := CPUParticles3D.new()
+	p.amount = amount
+	p.lifetime = lifetime
+	p.mesh = sprite_mesh(name, color, additive)
+	p.scale_amount_min = size_min
+	p.scale_amount_max = size_max
+	p.angle_min = 0
+	p.angle_max = 360
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(1, 1, 1, 0))
+	ramp.add_point(0.15, Color(1, 1, 1, 1))
+	ramp.set_color(1, Color(1, 1, 1, 0))
+	p.color_ramp = ramp
+	var sc := Curve.new()
+	sc.add_point(Vector2(0, 0.6))
+	sc.add_point(Vector2(0.3, 1.0))
+	sc.add_point(Vector2(1, 0.2))
+	p.scale_amount_curve = sc
+	return p
+
+
 static func burst(parent: Node3D, pos: Vector3, color: Color, amount := 28, size := 0.08) -> void:
 	var p := CPUParticles3D.new()
 	p.position = pos
@@ -138,28 +195,30 @@ static func element_mesh(element: int) -> Mesh:
 
 
 static func _element_particles(element: int, color: Color, amount: int, size: float) -> CPUParticles3D:
-	var p := CPUParticles3D.new()
-	p.amount = amount
+	var name := "circle_05"
+	match element:
+		Rules.Element.FUEGO: name = "flame_05"
+		Rules.Element.HIELO: name = "star_07"
+		Rules.Element.TRUENO: name = "spark_04"
+		Rules.Element.TIERRA: name = "dirt_02"
+		Rules.Element.AIRE: name = "smoke_07"
+		_: name = "star_05"
+	var p := sprite_particles(name, color, amount, 0.6, size * 2.5, size * 5.0, element != Rules.Element.TIERRA)
 	p.one_shot = true
 	p.explosiveness = 1.0
-	p.scale_amount_min = size
-	p.scale_amount_max = size * 2.2
-	p.color = color
-	p.mesh = element_mesh(element)
-	var mat := _unshaded(color)
-	mat.no_depth_test = false
-	p.mesh.surface_set_material(0, mat)
 	var ramp := Gradient.new()
 	ramp.set_color(0, Color(1, 1, 1, 1))
-	ramp.set_color(1, Color(color.r, color.g, color.b, 0))
 	ramp.add_point(0.35, color)
+	ramp.set_color(1, Color(color.r, color.g, color.b, 0))
 	p.color_ramp = ramp
 	match element:
 		Rules.Element.FUEGO:
-			p.lifetime = 0.75
-			p.gravity = Vector3(0, 2.5, 0) # Las brasas suben.
+			p.lifetime = 0.8
+			p.gravity = Vector3(0, 2.5, 0) # Las llamas suben.
 			p.damping_min = 2.0
 			p.damping_max = 4.0
+			p.angular_velocity_min = -90
+			p.angular_velocity_max = 90
 		Rules.Element.HIELO:
 			p.lifetime = 0.8
 			p.gravity = Vector3(0, -9, 0)
@@ -168,9 +227,10 @@ static func _element_particles(element: int, color: Color, amount: int, size: fl
 		Rules.Element.TRUENO:
 			p.lifetime = 0.35
 			p.gravity = Vector3.ZERO
-			p.particle_flag_align_y = true
 			p.initial_velocity_min = 5.0
 			p.initial_velocity_max = 9.0
+			p.angular_velocity_min = -720
+			p.angular_velocity_max = 720
 		Rules.Element.TIERRA:
 			p.lifetime = 0.8
 			p.gravity = Vector3(0, -14, 0)
@@ -182,6 +242,8 @@ static func _element_particles(element: int, color: Color, amount: int, size: fl
 			p.damping_min = 3.0
 			p.damping_max = 5.0
 			p.spread = 180
+			p.angular_velocity_min = -120
+			p.angular_velocity_max = 120
 		_:
 			p.lifetime = 0.6
 			p.gravity = Vector3(0, -5, 0)
@@ -190,32 +252,23 @@ static func _element_particles(element: int, color: Color, amount: int, size: fl
 
 ## Destello plano que crece y se apaga (centro del impacto).
 static func flash(parent: Node3D, pos: Vector3, color: Color, size := 1.4, duration := 0.22) -> void:
-	var m := MeshInstance3D.new()
-	var q := QuadMesh.new()
-	q.size = Vector2.ONE
-	m.mesh = q
-	var tex := GradientTexture2D.new()
-	tex.fill = GradientTexture2D.FILL_RADIAL
-	tex.fill_from = Vector2(0.5, 0.5)
-	tex.fill_to = Vector2(0.5, 0.0)
-	var g := Gradient.new()
-	g.set_color(0, Color(1, 1, 1, 1))
-	g.set_color(1, Color(color.r, color.g, color.b, 0))
-	g.add_point(0.3, color)
-	tex.gradient = g
-	var mat := _unshaded(Color.WHITE)
-	mat.albedo_texture = tex
-	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	m.material_override = mat
-	m.position = pos
-	m.scale = Vector3.ONE * 0.2
-	parent.add_child(m)
-	var tw := parent.create_tween()
-	tw.set_parallel(true)
-	tw.tween_property(m, "scale", Vector3.ONE * size, duration).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tw.tween_property(mat, "albedo_color:a", 0.0, duration).set_delay(duration * 0.3)
-	tw.chain().tween_callback(m.queue_free)
+	for layer in [["light_01", 1.0, 0.0], ["circle_05", 0.7, 0.0], ["star_07", 1.3, 45.0]]:
+		var m := MeshInstance3D.new()
+		var q := QuadMesh.new()
+		q.size = Vector2.ONE
+		m.mesh = q
+		var mat := sprite_material(layer[0], color if layer[0] != "circle_05" else Color.WHITE, true, false)
+		mat.vertex_color_use_as_albedo = false
+		mat.no_depth_test = true
+		m.material_override = mat
+		m.position = pos
+		m.scale = Vector3.ONE * 0.2
+		parent.add_child(m)
+		var tw := parent.create_tween()
+		tw.set_parallel(true)
+		tw.tween_property(m, "scale", Vector3.ONE * size * float(layer[1]), duration).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_property(mat, "albedo_color:a", 0.0, duration).set_delay(duration * 0.3)
+		tw.chain().tween_callback(m.queue_free)
 
 
 ## Tajo: una estela curva orientada a la cámara que cruza al objetivo.
@@ -223,21 +276,13 @@ static func slash(parent: Node3D, pos: Vector3, color: Color, angle_deg := -35.0
 	var cam := parent.get_viewport().get_camera_3d()
 	var m := MeshInstance3D.new()
 	var q := QuadMesh.new()
-	q.size = Vector2(2.2, 0.34)
+	q.size = Vector2(2.2, 2.2)
 	m.mesh = q
-	var tex := GradientTexture2D.new()
-	tex.fill_from = Vector2(0, 0.5)
-	tex.fill_to = Vector2(1, 0.5)
-	var g := Gradient.new()
-	g.set_color(0, Color(color.r, color.g, color.b, 0))
-	g.set_color(1, Color(color.r, color.g, color.b, 0))
-	g.add_point(0.5, Color(1, 1, 1, 1))
-	g.add_point(0.25, color)
-	g.add_point(0.75, color)
-	tex.gradient = g
-	var mat := _unshaded(Color.WHITE)
-	mat.albedo_texture = tex
-	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	var mat := sprite_material("slash_02", Color.WHITE, true, false)
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_DISABLED
+	mat.vertex_color_use_as_albedo = false
+	mat.albedo_color = color.lightened(0.35)
+	mat.no_depth_test = true
 	m.material_override = mat
 	parent.add_child(m)
 	if cam != null:
@@ -245,11 +290,12 @@ static func slash(parent: Node3D, pos: Vector3, color: Color, angle_deg := -35.0
 	else:
 		m.position = pos
 	m.rotate_object_local(Vector3.FORWARD, deg_to_rad(angle_deg))
-	m.scale = Vector3(0.1, 1.6, 1)
+	m.scale = Vector3(0.3, 0.3, 1)
 	var tw := parent.create_tween()
 	tw.set_parallel(true)
-	tw.tween_property(m, "scale", Vector3(1.5, 0.8, 1), 0.14).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tw.tween_property(mat, "albedo_color:a", 0.0, 0.16).set_delay(0.08)
+	tw.tween_property(m, "scale", Vector3(1.2, 1.2, 1), 0.14).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(m, "rotation", m.rotation + m.basis.z * deg_to_rad(40.0 * signf(angle_deg)), 0.2)
+	tw.tween_property(mat, "albedo_color:a", 0.0, 0.18).set_delay(0.08)
 	tw.chain().tween_callback(m.queue_free)
 
 
@@ -271,33 +317,17 @@ static func impact(parent: Node3D, pos: Vector3, color: Color, element: int, dir
 	p.emitting = true
 	parent.get_tree().create_timer(p.lifetime + 0.3).timeout.connect(p.queue_free)
 	# Polvo en el suelo.
-	var dust := CPUParticles3D.new()
-	dust.position = pos + Vector3(0, 0.05, 0)
-	dust.amount = 12
+	var dust := sprite_particles("smoke_04", Color(0.75, 0.65, 0.55, 0.55), 10, 0.6, 0.35, 0.7, false)
+	dust.position = pos + Vector3(0, 0.1, 0)
 	dust.one_shot = true
 	dust.explosiveness = 1.0
-	dust.lifetime = 0.55
 	dust.direction = Vector3.UP
 	dust.spread = 80
 	dust.initial_velocity_min = 1.0
 	dust.initial_velocity_max = 2.2
-	dust.gravity = Vector3(0, -1.5, 0)
-	dust.scale_amount_min = 0.25
-	dust.scale_amount_max = 0.45
-	var dm := SphereMesh.new()
-	dm.radius = 0.5
-	dm.height = 1.0
-	dm.radial_segments = 6
-	dm.rings = 3
-	var dmat := StandardMaterial3D.new()
-	dmat.albedo_color = Color(0.55, 0.45, 0.35, 0.5)
-	dmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	dm.material = dmat
-	dust.mesh = dm
-	var dramp := Gradient.new()
-	dramp.set_color(0, Color(1, 1, 1, 0.6))
-	dramp.set_color(1, Color(1, 1, 1, 0))
-	dust.color_ramp = dramp
+	dust.gravity = Vector3(0, -1.0, 0)
+	dust.angular_velocity_min = -60
+	dust.angular_velocity_max = 60
 	parent.add_child(dust)
 	dust.emitting = true
 	parent.get_tree().create_timer(1.0).timeout.connect(dust.queue_free)
@@ -305,33 +335,17 @@ static func impact(parent: Node3D, pos: Vector3, color: Color, element: int, dir
 
 ## Nube de polvo bajo los pies al embestir.
 static func dust_puff(parent: Node3D, pos: Vector3, dir: Vector3) -> void:
-	var p := CPUParticles3D.new()
-	p.position = pos + Vector3(0, 0.05, 0)
-	p.amount = 8
+	var p := sprite_particles("smoke_04", Color(0.75, 0.65, 0.55, 0.5), 8, 0.5, 0.3, 0.6, false)
+	p.position = pos + Vector3(0, 0.1, 0)
 	p.one_shot = true
 	p.explosiveness = 1.0
-	p.lifetime = 0.45
 	p.direction = (-dir + Vector3.UP * 0.4).normalized()
 	p.spread = 40
 	p.initial_velocity_min = 1.2
 	p.initial_velocity_max = 2.4
-	p.gravity = Vector3(0, -1, 0)
-	p.scale_amount_min = 0.22
-	p.scale_amount_max = 0.4
-	var m := SphereMesh.new()
-	m.radius = 0.5
-	m.height = 1.0
-	m.radial_segments = 6
-	m.rings = 3
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.6, 0.5, 0.4, 0.45)
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	m.material = mat
-	p.mesh = m
-	var ramp := Gradient.new()
-	ramp.set_color(0, Color(1, 1, 1, 0.5))
-	ramp.set_color(1, Color(1, 1, 1, 0))
-	p.color_ramp = ramp
+	p.gravity = Vector3(0, -0.8, 0)
+	p.angular_velocity_min = -60
+	p.angular_velocity_max = 60
 	parent.add_child(p)
 	p.emitting = true
 	parent.get_tree().create_timer(0.9).timeout.connect(p.queue_free)
@@ -352,23 +366,14 @@ static func projectile(parent: Node3D, from: Vector3, to: Vector3, color: Color,
 	node.add_child(head)
 	var glow := MeshInstance3D.new()
 	var q := QuadMesh.new()
-	q.size = Vector2(1.1, 1.1)
+	q.size = Vector2(1.2, 1.2)
 	glow.mesh = q
-	var tex := GradientTexture2D.new()
-	tex.fill = GradientTexture2D.FILL_RADIAL
-	tex.fill_from = Vector2(0.5, 0.5)
-	tex.fill_to = Vector2(0.5, 0.0)
-	var g := Gradient.new()
-	g.set_color(0, Color(color.r, color.g, color.b, 0.9))
-	g.set_color(1, Color(color.r, color.g, color.b, 0))
-	tex.gradient = g
-	var gm := _unshaded(Color.WHITE)
-	gm.albedo_texture = tex
-	gm.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-	gm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	var gm := sprite_material("circle_05", color, true, false)
+	gm.vertex_color_use_as_albedo = false
 	glow.material_override = gm
 	node.add_child(glow)
-	var trail := CPUParticles3D.new()
+	var trail_name := "flame_05" if element == Rules.Element.FUEGO else ("star_07" if element == Rules.Element.HIELO else "circle_05")
+	var trail := sprite_particles(trail_name, color, 70, 0.5, 0.18, 0.4)
 	trail.local_coords = false
 	trail.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
 	trail.emission_sphere_radius = 0.08
@@ -376,15 +381,7 @@ static func projectile(parent: Node3D, from: Vector3, to: Vector3, color: Color,
 	trail.spread = 180
 	trail.initial_velocity_min = 0.2
 	trail.initial_velocity_max = 0.6
-	trail.gravity = Vector3(0, 0.5, 0) if element == Rules.Element.FUEGO else Vector3.ZERO
-	trail.scale_amount_min = 0.1
-	trail.scale_amount_max = 0.2
-	trail.amount = 60
-	trail.lifetime = 0.45
-	trail.mesh = element_mesh(element)
-	var tmat := _unshaded(color)
-	tmat.no_depth_test = false
-	trail.mesh.surface_set_material(0, tmat)
+	trail.gravity = Vector3(0, 0.8, 0) if element == Rules.Element.FUEGO else Vector3.ZERO
 	var ramp := Gradient.new()
 	ramp.set_color(0, Color(1, 1, 1, 1))
 	ramp.set_color(1, Color(color.r, color.g, color.b, 0))

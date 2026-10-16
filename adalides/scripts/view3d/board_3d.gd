@@ -13,14 +13,24 @@ var bodies: Dictionary = {} # StaticBody3D → Vector2i (para el raycast del arr
 var pieces: Dictionary = {} # Champion → ChampionPiece
 var highlighted: Array[Vector2i] = []
 var tiles_root: Node3D # Las casillas y la línea central (se ocultan en el mercado).
+var deco: Node3D
+var _sigils: Array[Node3D] = []
+var _flames: Array[OmniLight3D] = []
+var _time: float = 0.0
+var _side_roots: Array[Node3D] = [] # Casillas de cada lado, para mostrar solo el tuyo.
 
 
 func _ready() -> void:
 	tiles_root = Node3D.new()
 	add_child(tiles_root)
+	for side in 2:
+		var r := Node3D.new()
+		tiles_root.add_child(r)
+		_side_roots.append(r)
 	for y in 2 * Rules.BOARD_ROWS:
 		for x in Rules.BOARD_COLS:
 			_make_tile(Vector2i(x, y))
+	_build_deco()
 	var light := DirectionalLight3D.new()
 	light.rotation_degrees = Vector3(-55, 30, 0)
 	light.light_energy = 1.2
@@ -119,9 +129,23 @@ func _make_tile(pos: Vector2i) -> void:
 	body.input_event.connect(func(_cam: Node, event: InputEvent, _p: Vector3, _n: Vector3, _i: int) -> void:
 		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 			tile_clicked.emit(pos))
-	tiles_root.add_child(body)
+	_side_roots[Board.side_of(pos)].add_child(body)
 	tiles[pos] = mesh
 	bodies[body] = pos
+	# Borde fino emisivo en el color del bando.
+	var edge := MeshInstance3D.new()
+	var em := BoxMesh.new()
+	em.size = Vector3(TILE - 0.02, 0.06, TILE - 0.02)
+	edge.mesh = em
+	var emat := StandardMaterial3D.new()
+	var side := Board.side_of(pos)
+	var c := Color(0.35, 0.6, 1.0) if side == 0 else Color(1.0, 0.4, 0.4)
+	emat.albedo_color = c.darkened(0.5)
+	emat.emission_enabled = true
+	emat.emission = c * 0.35
+	edge.material_override = emat
+	edge.position.y = -0.03
+	body.add_child(edge)
 
 
 func _tile_material(pos: Vector2i, highlight: bool) -> StandardMaterial3D:
@@ -149,6 +173,51 @@ func highlight_tiles(positions: Array[Vector2i]) -> void:
 
 func set_mat_visible(v: bool) -> void:
 	tiles_root.visible = v
+	deco.visible = v
+
+
+## En la alineación solo se muestra tu mitad del campo.
+func set_enemy_side_visible(v: bool) -> void:
+	_side_roots[1].visible = v
+
+
+func _process(delta: float) -> void:
+	if not deco.visible:
+		return
+	_time += delta
+	Deco.animate(_sigils, _flames, _time, delta)
+
+
+func _build_deco() -> void:
+	deco = Node3D.new()
+	add_child(deco)
+	var cx := world_x(2)
+	var cz := (world_z(0) + world_z(5)) / 2.0
+	# Sello bajo todo el campo y sellos de cada bando fuera de la cuadrícula.
+	_sigils.append(Deco.sigil(deco, Vector3(cx, -0.055, cz), 10.5, Color(0.85, 0.7, 0.32, 0.4)))
+	_sigils.append(Deco.sigil(deco, Vector3(cx + 4.4, 0.0, world_z(1)), 1.6, Color(0.4, 0.65, 1.0, 0.7)))
+	_sigils.append(Deco.sigil(deco, Vector3(cx - 4.4, 0.0, world_z(1)), 1.6, Color(0.4, 0.65, 1.0, 0.7)))
+	_sigils.append(Deco.sigil(deco, Vector3(cx + 4.4, 0.0, world_z(4)), 1.6, Color(1.0, 0.45, 0.4, 0.7)))
+	_sigils.append(Deco.sigil(deco, Vector3(cx - 4.4, 0.0, world_z(4)), 1.6, Color(1.0, 0.45, 0.4, 0.7)))
+	# Braseros en las cuatro esquinas de la mesa.
+	for dx in [-4.6, 4.6]:
+		for dz in [-1.0, 1.0]:
+			_flames.append(Deco.brazier(deco, Vector3(cx + dx, 0, cz + dz * 4.3)))
+	Deco.motes(deco, Vector3(cx, 1.0, cz), Vector3(3.5, 0.6, 4.0), Color(1, 0.9, 0.6), 60)
+	# Franjas de luz en los bordes de cada mitad.
+	for side in 2:
+		var strip := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(Rules.BOARD_COLS * TILE + 0.3, 0.04, 0.1)
+		strip.mesh = bm
+		var c := Color(0.35, 0.6, 1.0) if side == 0 else Color(1.0, 0.4, 0.4)
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = c
+		mat.emission_enabled = true
+		mat.emission = c * 0.8
+		strip.material_override = mat
+		strip.position = Vector3(cx, 0.02, world_z(0) - 0.65 if side == 0 else world_z(5) + 0.65)
+		deco.add_child(strip)
 
 
 func piece_of(ch: Champion) -> ChampionPiece:

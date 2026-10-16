@@ -20,6 +20,11 @@ var _plate: MeshInstance3D
 var _face: Node3D
 var _frame: Sprite3D
 var _glow: MeshInstance3D
+var _arch: Sprite3D
+var _elem: Node3D
+var _sparkles: CPUParticles3D
+var _halo: MeshInstance3D
+var _icon_tw: Tween
 var _hover_tw: Tween
 var _select_tw: Tween
 var home := Vector3.ZERO # Sitio en la mesa al que vuelve si se suelta fuera.
@@ -104,6 +109,35 @@ func setup(p_card: ChampionData) -> void:
 	var arch := flat_sprite(Icons.archetype(card.archetype), 0.0023, tex_pos(256, 305) + Vector3(0, 0.002, 0), 2)
 	arch.modulate = color.lightened(0.15)
 	_face.add_child(arch)
+	_arch = arch
+	# Halo tras el retrato: solo se ve con la carta seleccionada.
+	_halo = MeshInstance3D.new()
+	var hq := QuadMesh.new()
+	hq.size = Vector2(1.1, 1.1)
+	_halo.mesh = hq
+	var hm := Fx.sprite_material("magic_03", color, true, false)
+	hm.billboard_mode = BaseMaterial3D.BILLBOARD_DISABLED
+	hm.vertex_color_use_as_albedo = false
+	_halo.material_override = hm
+	_halo.rotation_degrees = Vector3(-90, 180, 0)
+	_halo.position = tex_pos(256, 305) + Vector3(0, 0.001, 0)
+	hm.render_priority = 1
+	_halo.visible = false
+	_face.add_child(_halo)
+	# Destellos que giran alrededor del retrato.
+	_sparkles = Fx.sprite_particles("star_07", color.lightened(0.4), 18, 1.1, 0.08, 0.2)
+	_sparkles.position = tex_pos(256, 305) + Vector3(0, 0.12, 0)
+	_sparkles.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	_sparkles.emission_box_extents = Vector3(0.42, 0.02, 0.34)
+	_sparkles.direction = Vector3.UP
+	_sparkles.spread = 20
+	_sparkles.initial_velocity_min = 0.15
+	_sparkles.initial_velocity_max = 0.4
+	_sparkles.gravity = Vector3.ZERO
+	_sparkles.angular_velocity_min = -90
+	_sparkles.angular_velocity_max = 90
+	_sparkles.emitting = false
+	_face.add_child(_sparkles)
 	if card.second_archetype >= 0:
 		arch.position = tex_pos(200, 305) + Vector3(0, 0.002, 0)
 		arch.pixel_size = 0.0018
@@ -115,6 +149,7 @@ func setup(p_card: ChampionData) -> void:
 		var elem := flat_sprite(Icons.element(card.element), 0.00095, tex_pos(100, 418) + Vector3(0, 0.004, 0), 4)
 		elem.modulate = Color.WHITE
 		_face.add_child(elem)
+		_elem = elem
 	else:
 		_face.add_child(flat_label("★ Héroe", 30, Icons.HERO_COLOR, tex_pos(118, 420), 4))
 	_face.add_child(flat_label("◆ %d" % card.cost, 40, Color(0.62, 0.8, 1.0), tex_pos(408, 420), 4))
@@ -172,6 +207,7 @@ func set_selected(v: bool) -> void:
 		return
 	selected = v
 	_glow.visible = v
+	_set_icon_animated(v)
 	if _select_tw != null and _select_tw.is_valid():
 		_select_tw.kill()
 	if _hover_tw != null and _hover_tw.is_valid():
@@ -190,6 +226,32 @@ func set_selected(v: bool) -> void:
 		_select_tw.tween_property(self, "scale", Vector3.ONE, 0.15).set_trans(Tween.TRANS_SINE)
 		_select_tw.tween_property(self, "position", home, 0.2).set_trans(Tween.TRANS_SINE)
 		_select_tw.tween_property(self, "rotation_degrees", home_rot, 0.2).set_trans(Tween.TRANS_SINE)
+
+
+## El retrato late y gira, el halo gira detrás y los destellos orbitan.
+func _set_icon_animated(on: bool) -> void:
+	if _icon_tw != null and _icon_tw.is_valid():
+		_icon_tw.kill()
+	_sparkles.emitting = on
+	_halo.visible = on
+	if not on:
+		_arch.scale = Vector3.ONE
+		_arch.rotation_degrees = Vector3(-90, 180, 0)
+		if _elem != null:
+			_elem.scale = Vector3.ONE
+		return
+	_icon_tw = create_tween()
+	_icon_tw.set_loops()
+	_icon_tw.set_parallel(true)
+	_icon_tw.tween_property(_arch, "scale", Vector3.ONE * 1.16, 0.55).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_icon_tw.tween_property(_arch, "rotation_degrees:y", 180.0 + 7.0, 0.55).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_icon_tw.tween_property(_halo, "rotation_degrees:y", 180.0 + 360.0, 1.1).as_relative().from(180.0)
+	if _elem != null:
+		_icon_tw.tween_property(_elem, "scale", Vector3.ONE * 1.25, 0.55).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_icon_tw.chain().tween_property(_arch, "scale", Vector3.ONE, 0.55).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_icon_tw.parallel().tween_property(_arch, "rotation_degrees:y", 180.0 - 7.0, 0.55).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	if _elem != null:
+		_icon_tw.parallel().tween_property(_elem, "scale", Vector3.ONE, 0.55).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 
 func _float_loop() -> void:
@@ -265,5 +327,9 @@ func flip(duration := 0.35) -> Tween:
 	tw.chain().tween_property(self, "position:y", position.y, duration / 2).set_trans(Tween.TRANS_SINE)
 	tw.chain().tween_callback(func() -> void: face_up = true)
 	# La cara se muestra a mitad del giro.
-	get_tree().create_timer(duration / 2).timeout.connect(func() -> void: _face.visible = true)
+	get_tree().create_timer(duration / 2).timeout.connect(func() -> void:
+		_face.visible = true
+		_arch.scale = Vector3.ONE * 0.3
+		var pop := create_tween()
+		pop.tween_property(_arch, "scale", Vector3.ONE, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT))
 	return tw
