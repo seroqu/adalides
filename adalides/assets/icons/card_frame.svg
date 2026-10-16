@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 720" width="512" height="720">
+  <!-- Marco de la cara: blanco para teñirlo con el color del elemento. -->
+  <defs>
+    <clipPath id="c"><rect x="0" y="0" width="512" height="720" rx="30"/></clipPath>
+  </defs>
+  <g clip-path="url(#c)">
+    <rect x="0" y="0" width="512" height="720" rx="30" fill="#fff"/>
+    <rect x="22" y="22" width="468" height="676" rx="18" fill="#000" opacity=".82"/>
+    <rect x="30" y="30" width="452" height="660" rx="14" fill="none" stroke="#fff" stroke-width="2" opacity=".55"/>
+    <!-- Banda del nombre -->
+    <rect x="30" y="30" width="452" height="96" rx="14" fill="#fff" opacity=".16"/>
+    <!-- Marco del retrato -->
+    <rect x="58" y="150" width="396" height="310" rx="10" fill="#fff" opacity=".07"/>
+    <rect x="58" y="150" width="396" height="310" rx="10" fill="none" stroke="#fff" stroke-width="2" opacity=".35"/>
+    <!-- Banda inferior -->
+    <rect x="30" y="590" width="452" height="100" rx="14" fill="#fff" opacity=".12"/>
+    <!-- Esquinas -->
+    <path d="M38 40 L38 92 M38 40 L90 40" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+    <path d="M474 40 L474 92 M474 40 L422 40" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+    <path d="M38 680 L38 628 M38 680 L90 680" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+    <path d="M474 680 L474 628 M474 680 L422 680" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+  </g>
+</svg>

@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 720" width="512" height="720">
+  <!-- Dorso de las cartas del Demiurgo. -->
+  <defs>
+    <clipPath id="c"><rect x="0" y="0" width="512" height="720" rx="30"/></clipPath>
+    <pattern id="lat" width="44" height="44" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="44" height="44" fill="#1a1530"/>
+      <path d="M0 22 H44 M22 0 V44" stroke="#d9b45a" stroke-width="1.2" opacity=".28"/>
+      <circle cx="22" cy="22" r="2.2" fill="#d9b45a" opacity=".5"/>
+    </pattern>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#5a3b8f" stop-opacity=".9"/>
+      <stop offset="1" stop-color="#1a1530" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <g clip-path="url(#c)">
+    <rect width="512" height="720" fill="#d9b45a"/>
+    <rect x="12" y="12" width="488" height="696" rx="22" fill="#1a1530"/>
+    <rect x="26" y="26" width="460" height="668" rx="16" fill="url(#lat)"/>
+    <rect x="26" y="26" width="460" height="668" rx="16" fill="none" stroke="#d9b45a" stroke-width="3"/>
+    <rect x="40" y="40" width="432" height="640" rx="12" fill="none" stroke="#d9b45a" stroke-width="1.2" opacity=".6"/>
+    <circle cx="256" cy="360" r="190" fill="url(#glow)"/>
+    <!-- Emblema: rombo, círculo y ojo del Demiurgo -->
+    <polygon points="256,150 440,360 256,570 72,360" fill="#241c45" stroke="#d9b45a" stroke-width="4"/>
+    <polygon points="256,185 405,360 256,535 107,360" fill="none" stroke="#d9b45a" stroke-width="1.5" opacity=".7"/>
+    <circle cx="256" cy="360" r="118" fill="#1a1530" stroke="#d9b45a" stroke-width="5"/>
+    <circle cx="256" cy="360" r="100" fill="none" stroke="#d9b45a" stroke-width="1.5" opacity=".7"/>
+    <path d="M150 360 Q256 265 362 360 Q256 455 150 360 Z" fill="#2f2460" stroke="#f1d58a" stroke-width="4"/>
+    <circle cx="256" cy="360" r="40" fill="#d9b45a"/>
+    <circle cx="256" cy="360" r="22" fill="#1a1530"/>
+    <circle cx="268" cy="348" r="7" fill="#fff4cc"/>
+    <!-- Rayos -->
+    <g stroke="#d9b45a" stroke-width="3" stroke-linecap="round" opacity=".85">
+      <path d="M256 215 V240"/><path d="M256 480 V505"/><path d="M111 360 H136"/><path d="M376 360 H401"/>
+      <path d="M154 258 L171 275"/><path d="M358 258 L341 275"/><path d="M154 462 L171 445"/><path d="M358 462 L341 445"/>
+    </g>
+    <!-- Esquinas -->
+    <g fill="none" stroke="#d9b45a" stroke-width="4" stroke-linecap="round">
+      <path d="M58 100 V58 H100"/><path d="M454 100 V58 H412"/><path d="M58 620 V662 H100"/><path d="M454 620 V662 H412"/>
+    </g>
+    <g fill="#d9b45a"><circle cx="58" cy="58" r="5"/><circle cx="454" cy="58" r="5"/><circle cx="58" cy="662" r="5"/><circle cx="454" cy="662" r="5"/></g>
+  </g>
+</svg>

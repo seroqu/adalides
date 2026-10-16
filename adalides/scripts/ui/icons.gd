@@ -30,6 +30,14 @@ static func archetype(a: int) -> Texture2D:
 	return _load("res://assets/icons/archetype_%s.svg" % ARCHETYPE_FILES.get(a, "robot"))
 
 
+static func card_frame() -> Texture2D:
+	return _load("res://assets/icons/card_frame.svg")
+
+
+static func card_back() -> Texture2D:
+	return _load("res://assets/icons/card_back.svg")
+
+
 static func color_of(card: ChampionData) -> Color:
 	return HERO_COLOR if card.hero else ELEMENT_COLORS.get(card.element, Color.WHITE)
 

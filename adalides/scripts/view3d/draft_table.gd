@@ -7,48 +7,53 @@ signal card_clicked(card: ChampionData)
 signal card_released(card: ChampionData, screen_pos: Vector2)
 
 const COLS := 6
-const SPACING_X := 0.82
-const SPACING_Z := 1.25
+const SPACING_X := 1.22
+const SPACING_Z := 1.8
 const HOVER_Y := 0.9
 
 var deck_node: Node3D
 var cards: Array[Card3D] = [] # Una misma carta puede estar repetida (copias del mazo).
 var dealt: bool = false
-var deck_pos := Vector3(-1.9, 0.0, -0.7)
+var deck_pos := Vector3(2.2, 0.0, 1.0)
 
 
 func _ready() -> void:
 	deck_node = Node3D.new()
 	deck_node.position = deck_pos
 	add_child(deck_node)
-	for i in 6:
+	for i in 8:
 		var m := MeshInstance3D.new()
 		var b := BoxMesh.new()
 		b.size = Vector3(Card3D.W, 0.03, Card3D.H)
 		m.mesh = b
 		var mat := StandardMaterial3D.new()
-		mat.albedo_color = Color(0.12, 0.1, 0.2) if i < 5 else Color(0.2, 0.17, 0.3)
-		mat.emission_enabled = true
-		mat.emission = Color(0.8, 0.65, 0.2) * 0.12
+		mat.albedo_color = Color(0.1, 0.09, 0.16)
+		mat.roughness = 0.7
 		m.material_override = mat
-		m.position = Vector3(0.01 * i, 0.03 * i, -0.01 * i)
+		m.position = Vector3(0.008 * i, 0.03 * i, -0.008 * i)
 		deck_node.add_child(m)
+	# Dorso ilustrado sobre la carta superior del mazo.
+	var top := Card3D.back_sprite()
+	top.rotation_degrees = Vector3(-90, 0, 0)
+	top.position = Vector3(0.008 * 7, 0.03 * 7 + 0.017, -0.008 * 7)
+	deck_node.add_child(top)
 	var label := Label3D.new()
 	label.text = "Mazo del demiurgo\n(pulsa para repartir)"
 	label.font_size = 40
 	label.pixel_size = 0.0035
 	label.outline_size = 10
+	label.font = GameTheme.bold_font
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	label.position = Vector3(0, 0.75, 0)
+	label.position = Vector3(0, 1.25, 0)
 	label.name = "DeckLabel"
 	deck_node.add_child(label)
 	var body := StaticBody3D.new()
 	var shape := CollisionShape3D.new()
 	var cs := BoxShape3D.new()
-	cs.size = Vector3(Card3D.W + 0.2, 0.4, Card3D.H + 0.2)
+	cs.size = Vector3(Card3D.W + 0.2, 0.5, Card3D.H + 0.2)
 	shape.shape = cs
 	body.add_child(shape)
-	body.position.y = 0.1
+	body.position.y = 0.15
 	body.input_event.connect(func(_c: Node, event: InputEvent, _p: Vector3, _n: Vector3, _i: int) -> void:
 		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 			deck_clicked.emit())
@@ -65,8 +70,8 @@ func slot_position(index: int, total: int) -> Vector3:
 	var col := index % cols
 	var row := index / cols
 	var x := -(1.85 + (col - (cols - 1) / 2.0) * SPACING_X)
-	var z := 2.9 + ((rows - 1) / 2.0 - row) * SPACING_Z
-	return Vector3(x, HOVER_Y, z)
+	var depth := (rows - 1) / 2.0 - row # Las filas del fondo quedan más altas para no taparse.
+	return Vector3(x, HOVER_Y + depth * 0.4, 1.0 + depth * SPACING_Z)
 
 
 ## Reparte las cartas desde el mazo, una a una, y las voltea. Devuelve al terminar.
@@ -102,7 +107,7 @@ func take(card: ChampionData, by_human: bool) -> void:
 	if c == null:
 		return
 	cards.erase(c)
-	var target := Vector3(c.position.x, 2.5, -2.5) if by_human else Vector3(c.position.x, 2.2, 7.5)
+	var target := Vector3(c.position.x, 2.5, -3.5) if by_human else Vector3(c.position.x, 2.2, 7.5)
 	var tw := create_tween()
 	tw.set_parallel(true)
 	tw.tween_property(c, "position", target, 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)

@@ -55,7 +55,7 @@ func _ready() -> void:
 	# Mesa bajo el tablero.
 	var table := MeshInstance3D.new()
 	var tm := BoxMesh.new()
-	tm.size = Vector3(Rules.BOARD_COLS * TILE + 2.4, 0.2, 2 * Rules.BOARD_ROWS * TILE + 3.2)
+	tm.size = Vector3(Rules.BOARD_COLS * TILE + 5.6, 0.2, 2 * Rules.BOARD_ROWS * TILE + 3.2)
 	table.mesh = tm
 	var tmat := StandardMaterial3D.new()
 	tmat.albedo_color = Color(0.16, 0.1, 0.08)

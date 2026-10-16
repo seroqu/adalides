@@ -1,21 +1,72 @@
 class_name Card3D
 extends Node3D
-## Carta 3D para el draft: una placa con el dorso y, en la cara, icono de
-## arquetipo, icono de elemento, nombre y stats. Clicable. Se reparte boca
-## abajo y se voltea con `flip()`.
+## Carta 3D del draft y del mercado: una placa con dorso ilustrado y, en la
+## cara, marco del color del elemento, nombre, retrato (icono del arquetipo),
+## elemento, coste, poder y ataque/vida. Clicable. Se reparte boca abajo y se
+## voltea con `flip()`.
 
 signal pressed
 signal released(screen_pos: Vector2)
 
-const W := 0.74
-const H := 1.04
+const W := 1.1
+const H := 1.55
+const TEX_W := 512.0 # Tamaño de las texturas card_frame / card_back.
+const PX := W / TEX_W # Unidades por píxel de textura.
+const TEXT_PX := 0.0021 # Unidades por píxel de los Label3D.
 
 var card: ChampionData
 var face_up: bool = false
 var _plate: MeshInstance3D
 var _face: Node3D
-var _back: MeshInstance3D
+var _frame: Sprite3D
 var _glow: MeshInstance3D
+var _hover_tw: Tween
+
+
+## Convierte coordenadas de la textura (0..512, 0..720) a posición local sobre la cara.
+static func tex_pos(px: float, py: float) -> Vector3:
+	return Vector3((TEX_W / 2.0 - px) * PX, 0, (360.0 - py) * PX)
+
+
+static func flat_sprite(tex: Texture2D, pixel_size: float, pos: Vector3, priority: int) -> Sprite3D:
+	var s := Sprite3D.new()
+	s.texture = tex
+	s.pixel_size = pixel_size
+	s.rotation_degrees = Vector3(-90, 180, 0)
+	s.position = pos
+	s.shaded = false
+	s.render_priority = priority
+	s.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	return s
+
+
+static func flat_label(text: String, size: int, color: Color, pos: Vector3, priority: int, width := 0.0) -> Label3D:
+	var l := Label3D.new()
+	l.text = text
+	l.font_size = size
+	l.pixel_size = TEXT_PX
+	l.outline_size = int(size * 0.22)
+	l.outline_modulate = Color(0, 0, 0, 0.85)
+	l.modulate = color
+	l.rotation_degrees = Vector3(-90, 180, 0)
+	l.position = pos
+	l.render_priority = priority
+	l.font = GameTheme.bold_font
+	if width > 0.0:
+		l.width = width
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD
+	return l
+
+
+## Dorso ilustrado mirando hacia -Y (se usa también en el mazo).
+static func back_sprite() -> Sprite3D:
+	var s := Sprite3D.new()
+	s.texture = Icons.card_back()
+	s.pixel_size = PX
+	s.rotation_degrees = Vector3(90, 0, 0)
+	s.shaded = false
+	s.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	return s
 
 
 func setup(p_card: ChampionData) -> void:
@@ -26,74 +77,53 @@ func setup(p_card: ChampionData) -> void:
 	box.size = Vector3(W, 0.03, H)
 	_plate.mesh = box
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color.darkened(0.3)
+	mat.albedo_color = Color(0.09, 0.08, 0.13)
+	mat.roughness = 0.6
 	_plate.material_override = mat
 	add_child(_plate)
-	# Dorso: placa oscura con borde dorado, pegada debajo.
-	_back = MeshInstance3D.new()
-	var bb := BoxMesh.new()
-	bb.size = Vector3(W - 0.08, 0.01, H - 0.08)
-	_back.mesh = bb
-	var bmat := StandardMaterial3D.new()
-	bmat.albedo_color = Color(0.12, 0.1, 0.2)
-	bmat.emission_enabled = true
-	bmat.emission = Color(0.8, 0.65, 0.2) * 0.15
-	_back.material_override = bmat
-	_back.position.y = -0.02
-	add_child(_back)
-	# Cara: contenido plano sobre la placa.
+	var back := back_sprite()
+	back.position.y = -0.016
+	add_child(back)
+	# Cara: marco teñido del color del elemento y contenido plano encima.
 	_face = Node3D.new()
-	_face.position.y = 0.02
+	_face.position.y = 0.016
 	add_child(_face)
-	var arch := Sprite3D.new()
-	arch.texture = Icons.archetype(card.archetype)
-	arch.pixel_size = 0.0034
-	arch.rotation_degrees = Vector3(-90, 180, 0)
-	arch.position = Vector3(0, 0, -0.14)
-	arch.shaded = false
-	arch.modulate = Color(0.06, 0.05, 0.1)
+	_frame = flat_sprite(Icons.card_frame(), PX, Vector3.ZERO, 0)
+	_frame.modulate = color
+	_face.add_child(_frame)
+	# Nombre en la banda superior.
+	var name_label := flat_label(card.display_name, 46, Color.WHITE, tex_pos(256, 78), 3, 430)
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_face.add_child(name_label)
+	# Retrato: icono grande del arquetipo (y el segundo, en los héroes).
+	var arch := flat_sprite(Icons.archetype(card.archetype), 0.0046, tex_pos(256, 305) + Vector3(0, 0.002, 0), 2)
+	arch.modulate = color.lightened(0.15)
 	_face.add_child(arch)
 	if card.second_archetype >= 0:
-		var arch2 := Sprite3D.new()
-		arch2.texture = Icons.archetype(card.second_archetype)
-		arch2.pixel_size = 0.0022
-		arch2.rotation_degrees = Vector3(-90, 180, 0)
-		arch2.position = Vector3(0.22, 0, -0.36)
-		arch2.shaded = false
+		arch.position = tex_pos(200, 305) + Vector3(0, 0.002, 0)
+		arch.pixel_size = 0.0036
+		var arch2 := flat_sprite(Icons.archetype(card.second_archetype), 0.0036, tex_pos(330, 305) + Vector3(0, 0.002, 0), 2)
+		arch2.modulate = color.lightened(0.15)
 		_face.add_child(arch2)
+	# Elemento (abajo a la izquierda del retrato) y coste (abajo a la derecha).
 	if card.element >= 0:
-		var elem := Sprite3D.new()
-		elem.texture = Icons.element(card.element)
-		elem.modulate = Color(0.06, 0.05, 0.1)
-		elem.pixel_size = 0.0018
-		elem.rotation_degrees = Vector3(-90, 180, 0)
-		elem.position = Vector3(-0.24, 0, -0.38)
-		elem.shaded = false
+		var elem := flat_sprite(Icons.element(card.element), 0.0019, tex_pos(100, 418) + Vector3(0, 0.004, 0), 4)
+		elem.modulate = Color.WHITE
 		_face.add_child(elem)
-	var name_label := Label3D.new()
-	name_label.text = card.display_name.replace(" de ", "\nde ")
-	name_label.font_size = 44
-	name_label.pixel_size = 0.0032
-	name_label.outline_size = 12
-	name_label.outline_modulate = Color(0, 0, 0, 0.9)
-	name_label.rotation_degrees = Vector3(-90, 180, 0)
-	name_label.position = Vector3(0, 0, 0.22)
-	_face.add_child(name_label)
-	var stats := Label3D.new()
-	stats.text = "⚔%d ♥%d ◆%d" % [card.attack, card.defense, card.cost]
-	stats.font_size = 38
-	stats.pixel_size = 0.0032
-	stats.outline_size = 12
-	stats.outline_modulate = Color(0, 0, 0, 0.9)
-	stats.modulate = Color(1, 0.95, 0.7)
-	stats.rotation_degrees = Vector3(-90, 180, 0)
-	stats.position = Vector3(0, 0, 0.42)
-	_face.add_child(stats)
+	else:
+		_face.add_child(flat_label("★ Héroe", 30, Icons.HERO_COLOR, tex_pos(118, 420), 4))
+	_face.add_child(flat_label("◆ %d" % card.cost, 40, Color(0.62, 0.8, 1.0), tex_pos(408, 420), 4))
+	# Banda inferior: poder y ataque / vida.
+	var power := flat_label(String(card.power.get("name", "")), 30, Color(1.0, 0.88, 0.6), tex_pos(256, 616), 3, 420)
+	power.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_face.add_child(power)
+	_face.add_child(flat_label("⚔ %d" % card.attack, 44, Color(1, 0.55, 0.45), tex_pos(118, 664), 3))
+	_face.add_child(flat_label("♥ %d" % card.defense, 44, Color(0.55, 0.9, 0.55), tex_pos(394, 664), 3))
 	_face.visible = false
 	# Brillo de selección.
 	_glow = MeshInstance3D.new()
 	var gb := BoxMesh.new()
-	gb.size = Vector3(W + 0.1, 0.01, H + 0.1)
+	gb.size = Vector3(W + 0.12, 0.01, H + 0.12)
 	_glow.mesh = gb
 	var gmat := StandardMaterial3D.new()
 	gmat.albedo_color = Color(0.4, 1.0, 0.5)
@@ -122,16 +152,13 @@ func setup(p_card: ChampionData) -> void:
 	rotation_degrees.z = 180 # Boca abajo.
 
 
-var _hover_tw: Tween
-
-
 func _hover(on: bool) -> void:
 	if not face_up:
 		return
 	if _hover_tw != null and _hover_tw.is_valid():
 		_hover_tw.kill()
 	_hover_tw = create_tween()
-	_hover_tw.tween_property(self, "scale", Vector3.ONE * (1.15 if on else 1.0), 0.12).set_trans(Tween.TRANS_SINE)
+	_hover_tw.tween_property(self, "scale", Vector3.ONE * (1.12 if on else 1.0), 0.12).set_trans(Tween.TRANS_SINE)
 
 
 func set_selected(v: bool) -> void:
@@ -143,8 +170,15 @@ func is_selected() -> bool:
 
 
 func set_dim(v: bool) -> void:
+	var color := Icons.color_of(card)
+	_frame.modulate = color.darkened(0.6) if v else color
 	var mat: StandardMaterial3D = _plate.material_override
-	mat.albedo_color = Icons.color_of(card).darkened(0.75 if v else 0.3)
+	mat.albedo_color = Color(0.04, 0.04, 0.06) if v else Color(0.09, 0.08, 0.13)
+	for c in _face.get_children():
+		if c is Sprite3D and c != _frame:
+			(c as Sprite3D).modulate.a = 0.45 if v else 1.0
+		elif c is Label3D:
+			(c as Label3D).modulate.a = 0.45 if v else 1.0
 
 
 ## Voltea la carta (boca arriba) con una pequeña elevación.

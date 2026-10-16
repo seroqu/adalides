@@ -8,31 +8,49 @@ const AUTO_ROUND_SECONDS := 2.0
 const MARKET_SECONDS := 60
 const LINEUP_SECONDS := 30
 const DRAG_THRESHOLD := 8.0
-const HAND_SCALE := 0.68
+const HAND_SCALE := 0.85
+const HAND_CARD_W := 170.0
+
+const HELP_TEXT := """[b]Objetivo.[/b] Eres un adalid con 30 de vida. Cada ciclo armas un ejército de campeones y lo enfrentas al de otro adalid en una batalla automática de 4 asaltos. Pierdes vida al perder batallas; el último en pie es el nuevo demiurgo.
+
+[b]Draft (solo el primer ciclo).[/b] Pulsa el mazo para repartir; cada adalid toma 2 cartas por turnos.
+
+[b]Mercado (60 s).[/b] Compra campeones con Éter (◆), refresca el mercado por 2 ◆, vende cartas de tu mano por la mitad de su coste y sube tus tres pistas: tamaño del cuartel, campeones en batalla y dados. Cada mejora cuesta 5 ◆ más que la anterior de su pista. Los héroes (★) necesitan un hueco H del cuartel.
+
+[b]Copias.[/b] La segunda copia de una carta da +1/+1; la tercera y la cuarta activan su poder mejorado (AFI 1 y AFI 2).
+
+[b]Alineación (30 s).[/b] Arrastra las cartas de tu mano a tu lado del tablero (hasta el tope de tu pista). La fila junto a la línea dorada es el frente: alcance 1 salvo Arquero (3) y Mago (2).
+
+[b]Batalla.[/b] Cada asalto los campeones avanzan un paso, atacan al rival más cercano y usan sus poderes. Lanzas tantos dados de tres caras (−, neutra, +) como marque tu pista de Dados; el motor los reparte entre los poderes. Tres, seis o nueve campeones del mismo elemento (o dos, cuatro o seis del mismo arquetipo) en batalla activan sus tiers.
+
+[b]Éter por ciclo.[/b] 10, más 3 por cada 10 ahorrados, más el bono de racha (victorias o derrotas seguidas). Pulsa «Habilidades» para ver qué tiers tienes a mano y «Adalides» para la tabla."""
 
 var game: Game
 var board3d: Board3D
 var table: DraftTable
 var camera: Camera3D
+var cam_tw: Tween
 
-# UI general
 var ui: CanvasLayer
-var seed_spin: SpinBox
+var root: Control
+var seed_edit: LineEdit
 var standings: RichTextLabel
+var standings_panel: PanelContainer
 var log_label: RichTextLabel
 var phase_title: Label
 var hint: Label
 var hud: RichTextLabel
 var panels: Dictionary = {}
-var right_panel: PanelContainer
-# Celebraciones y efectos 2D
+var top_bar: PanelContainer
+var side: VBoxContainer
+var right_panel: Control # Zona donde se sueltan las cartas de la mesa (el panel lateral).
 var fx_layer: Control
 var banner: Label
 var banner_particles: CPUParticles2D
 var flash_rect: ColorRect
 var tier_label_top: Label
 var tier_label_bottom: Label
-# Draft y mercado (cartas sobre la mesa)
+
 var selected_card: ChampionData = null
 var table_busy: bool = false
 var card_detail: VBoxContainer
@@ -42,34 +60,39 @@ var buy_button: Button
 var market_detail: VBoxContainer
 var phase_left: float = 0.0
 var phase_total: float = 1.0
-var phase_bars: Dictionary = {} # State → ProgressBar
-var phase_labels: Dictionary = {} # State → Label
+var phase_bar: ProgressBar
+var phase_time: Label
+var timer_row: HBoxContainer
 var log_panel: PanelContainer
-var log_toggle: Button
 var hand_panel: Control
 var hand_box: HBoxContainer
-# Habilidades
 var skills_panel: PanelContainer
 var skills_box: VBoxContainer
-# Mercado
+var help_panel: PanelContainer
+var menu_panel: Control
+var menu_box: VBoxContainer
+var menu_title: Label
+var in_main_menu: bool = true
+var paused_menu: bool = false
+
 var upgrade_buttons: Dictionary = {}
 var upgrade_pips: Dictionary = {}
 var shop_eter: Label
 var refresh_button: Button
 var sell_button: Button
 var selected_cuartel: Champion = null
-# Alineación
+
 var lineup: Dictionary = {}
 var lineup_info: Label
 var pending_card: Champion = null
-# Arrastrar y soltar
+
 var drag: Dictionary = {}
 var drag_origin := Vector2.ZERO
 var drag_active: bool = false
 var drag_preview: PanelContainer
 var drag_preview_label: Label
 var drag_preview_icon: TextureRect
-# Batalla
+
 var battle_title: Label
 var battle_status: Label
 var pause_button: Button
@@ -82,10 +105,11 @@ var _auto_token: int = 0
 func _ready() -> void:
 	_build_world()
 	_build_ui()
-	_new_game()
 	var args := OS.get_cmdline_user_args()
 	if args.size() >= 2 and args[0] == "--screenshots":
 		_screenshot_tour(args[1])
+	else:
+		_show_main_menu()
 
 
 # ---------------------------------------------------------------- mundo 3D
@@ -100,146 +124,196 @@ func _build_world() -> void:
 	table.visible = false
 	add_child(table)
 	camera = Camera3D.new()
-	var center := Vector3(Board3D.world_x(2), 0, (Board3D.world_z(0) + Board3D.world_z(5)) / 2.0)
 	camera.fov = 50
-	camera.h_offset = -0.35
+	camera.h_offset = 0.55 # El panel lateral derecho ocupa sitio: el tablero se centra en lo que queda.
 	camera.v_offset = -0.75 # El tablero sube para dejar sitio a la mano de cartas.
 	add_child(camera)
-	camera.look_at_from_position(center + Vector3(0, 9.2, -5.4), center + Vector3(0, 0, 0.2), Vector3.UP)
+	_camera_view(View.BOARD, false)
+
+
+enum View { BOARD, DRAFT, MARKET }
+
+
+## Vista de la cámara: sobre el tablero de batalla o, en draft y mercado, cerca de las cartas.
+func _camera_view(view: View, animate := true) -> void:
+	var center := Vector3(Board3D.world_x(2), 0, (Board3D.world_z(0) + Board3D.world_z(5)) / 2.0)
+	var from: Vector3
+	var at: Vector3
+	var v_off := -0.75
+	if view == View.DRAFT:
+		from = Vector3(-1.3, 7.6, -4.3)
+		at = Vector3(-1.3, 0.0, 1.0)
+		v_off = -0.3
+	elif view == View.MARKET:
+		from = Vector3(-1.1, 6.0, -2.9)
+		at = Vector3(-1.1, 0.0, 1.6)
+		v_off = -0.55
+	else:
+		from = center + Vector3(0, 9.2, -5.4)
+		at = center + Vector3(0, 0, 0.2)
+	var t := Transform3D(Basis(), from).looking_at(at, Vector3.UP)
+	if cam_tw != null and cam_tw.is_valid():
+		cam_tw.kill()
+	if animate:
+		cam_tw = create_tween()
+		cam_tw.set_parallel(true)
+		cam_tw.tween_property(camera, "transform", t, 0.7).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		cam_tw.tween_property(camera, "v_offset", v_off, 0.7).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	else:
+		camera.transform = t
+		camera.v_offset = v_off
 
 
 # ---------------------------------------------------------------- UI
 
 func _build_ui() -> void:
 	ui = CanvasLayer.new()
+	ui.process_mode = Node.PROCESS_MODE_ALWAYS # Los menús funcionan con el juego en pausa.
 	add_child(ui)
-	var root := Control.new()
+	root = Control.new()
 	root.theme = GameTheme.get_theme()
 	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ui.add_child(root)
 
-	# Panel izquierdo: título y clasificación (compacto). La crónica va aparte y se pliega.
-	var left := PanelContainer.new()
-	left.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
-	left.offset_left = 8
-	left.offset_right = 340
-	left.offset_top = 8
-	root.add_child(left)
-	var lv := VBoxContainer.new()
-	lv.add_theme_constant_override("separation", 6)
-	left.add_child(lv)
-	lv.add_child(GameTheme.title("Adalides del demiurgo", 24))
-	var controls := HBoxContainer.new()
-	lv.add_child(controls)
-	var seed_label := Label.new()
-	seed_label.text = "Semilla"
-	controls.add_child(seed_label)
-	seed_spin = SpinBox.new()
-	seed_spin.max_value = 999999
-	seed_spin.custom_minimum_size.x = 100
-	controls.add_child(seed_spin)
-	var new_button := Button.new()
-	new_button.text = "Partida nueva"
-	new_button.pressed.connect(_new_game)
-	controls.add_child(new_button)
-	lv.add_child(GameTheme.heading("Adalides"))
+	# Barra superior: tus recursos, la fase con su tiempo y los accesos.
+	top_bar = PanelContainer.new()
+	top_bar.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	top_bar.offset_left = 12
+	top_bar.offset_right = -12
+	top_bar.offset_top = 10
+	var ts := GameTheme.panel_style()
+	ts.content_margin_top = 6
+	ts.content_margin_bottom = 6
+	ts.content_margin_left = 16
+	ts.content_margin_right = 10
+	top_bar.add_theme_stylebox_override("panel", ts)
+	root.add_child(top_bar)
+	var trow := HBoxContainer.new()
+	trow.add_theme_constant_override("separation", 14)
+	top_bar.add_child(trow)
+	hud = RichTextLabel.new()
+	hud.bbcode_enabled = true
+	hud.fit_content = true
+	hud.scroll_active = false
+	hud.autowrap_mode = TextServer.AUTOWRAP_OFF
+	hud.custom_minimum_size.x = 250
+	hud.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	hud.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+	hud.add_theme_font_size_override("normal_font_size", 22)
+	hud.add_theme_font_override("normal_font", GameTheme.bold_font)
+	trow.add_child(hud)
+	var center := VBoxContainer.new()
+	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	center.add_theme_constant_override("separation", 2)
+	trow.add_child(center)
+	phase_title = GameTheme.title("", 21)
+	phase_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	center.add_child(phase_title)
+	timer_row = HBoxContainer.new()
+	timer_row.add_theme_constant_override("separation", 8)
+	center.add_child(timer_row)
+	var spacer_l := Control.new()
+	spacer_l.custom_minimum_size.x = 60
+	timer_row.add_child(spacer_l)
+	phase_bar = ProgressBar.new()
+	phase_bar.min_value = 0
+	phase_bar.max_value = 1
+	phase_bar.value = 1
+	phase_bar.show_percentage = false
+	phase_bar.custom_minimum_size = Vector2(0, 8)
+	phase_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	phase_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = GameTheme.GOLD
+	fill.set_corner_radius_all(4)
+	phase_bar.add_theme_stylebox_override("fill", fill)
+	var bg := StyleBoxFlat.new()
+	bg.bg_color = Color(0.1, 0.09, 0.14)
+	bg.border_color = GameTheme.GOLD_DIM
+	bg.set_border_width_all(1)
+	bg.set_corner_radius_all(4)
+	phase_bar.add_theme_stylebox_override("background", bg)
+	timer_row.add_child(phase_bar)
+	phase_time = GameTheme.heading("0 s", 14)
+	phase_time.custom_minimum_size.x = 60
+	phase_time.autowrap_mode = TextServer.AUTOWRAP_OFF
+	timer_row.add_child(phase_time)
+	hint = _label("")
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.add_theme_color_override("font_color", GameTheme.TEXT_DIM)
+	hint.add_theme_font_size_override("font_size", 13)
+	center.add_child(hint)
+	var tools := HBoxContainer.new()
+	tools.add_theme_constant_override("separation", 6)
+	tools.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	trow.add_child(tools)
+	tools.add_child(_tool_button("Adalides", func() -> void: _toggle_overlay(standings_panel)))
+	tools.add_child(_tool_button("Habilidades", _toggle_skills))
+	tools.add_child(_tool_button("Crónica", func() -> void: _toggle_overlay(log_panel)))
+	var menu_b := _tool_button("☰", _toggle_pause_menu)
+	menu_b.add_theme_font_size_override("font_size", 18)
+	tools.add_child(menu_b)
+
+	# Columna lateral: solo los controles de la fase actual, sin marco vacío.
+	side = VBoxContainer.new()
+	side.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	side.offset_left = -344
+	side.offset_right = -12
+	side.offset_top = 92
+	side.add_theme_constant_override("separation", 8)
+	root.add_child(side)
+	right_panel = side
+	panels[Game.State.DRAFT] = _build_draft_panel()
+	panels[Game.State.MARKET] = _build_market_panel()
+	panels[Game.State.LINEUP] = _build_lineup_panel()
+	panels[Game.State.BATTLE] = _build_battle_panel()
+	for st in [Game.State.DRAFT, Game.State.MARKET, Game.State.LINEUP, Game.State.BATTLE]:
+		side.add_child(panels[st])
+	panels[Game.State.CYCLE_END] = _build_cycle_end_panel()
+	panels[Game.State.OVER] = _build_over_panel()
+	for st in [Game.State.CYCLE_END, Game.State.OVER]:
+		root.add_child(panels[st])
+
+	# Tablas desplegables: adalides, crónica, habilidades y cómo se juega.
+	standings_panel = _overlay(Vector2(520, 0), true)
+	var sv := VBoxContainer.new()
+	standings_panel.add_child(sv)
+	sv.add_child(_overlay_header("Adalides", standings_panel))
 	standings = RichTextLabel.new()
 	standings.bbcode_enabled = true
 	standings.fit_content = true
 	standings.scroll_active = false
 	standings.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
-	lv.add_child(standings)
-	log_toggle = Button.new()
-	log_toggle.text = "Crónica ▸"
-	log_toggle.pressed.connect(_toggle_log)
-	lv.add_child(log_toggle)
-	log_panel = PanelContainer.new()
-	log_panel.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
-	log_panel.offset_left = 8
-	log_panel.offset_right = 340
-	log_panel.offset_top = 268
-	log_panel.offset_bottom = -8
-	log_panel.visible = false
-	root.add_child(log_panel)
+	standings.add_theme_font_size_override("normal_font_size", 15)
+	sv.add_child(standings)
+	log_panel = _overlay(Vector2(560, 520), false)
+	var lv := VBoxContainer.new()
+	log_panel.add_child(lv)
+	lv.add_child(_overlay_header("Crónica", log_panel))
 	log_label = RichTextLabel.new()
 	log_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	log_label.scroll_following = true
-	log_panel.add_child(log_label)
-
-	# Cabecera: fase, HUD y ayuda.
-	var head := PanelContainer.new()
-	head.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	head.offset_left = 352
-	head.offset_right = -468
-	head.offset_top = 8
-	head.offset_bottom = 118
-	root.add_child(head)
-	var hv := VBoxContainer.new()
-	hv.add_theme_constant_override("separation", 4)
-	head.add_child(hv)
-	var hrow := HBoxContainer.new()
-	hv.add_child(hrow)
-	phase_title = GameTheme.title("", 20)
-	phase_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	hrow.add_child(phase_title)
-	var skills_button := Button.new()
-	skills_button.text = "Habilidades"
-	skills_button.pressed.connect(_toggle_skills)
-	hrow.add_child(skills_button)
-	hud = RichTextLabel.new()
-	hud.bbcode_enabled = true
-	hud.fit_content = true
-	hud.scroll_active = false
-	hud.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
-	hud.add_theme_font_size_override("normal_font_size", 15)
-	hud.add_theme_font_override("normal_font", GameTheme.bold_font)
-	hv.add_child(hud)
-	hint = _label("")
-	hint.add_theme_color_override("font_color", GameTheme.TEXT_DIM)
-	hint.add_theme_font_size_override("font_size", 13)
-	hv.add_child(hint)
-
-	# Panel derecho: controles de la fase.
-	right_panel = PanelContainer.new()
-	right_panel.set_anchors_and_offsets_preset(Control.PRESET_RIGHT_WIDE)
-	right_panel.offset_left = -460
-	right_panel.offset_right = -8
-	right_panel.offset_top = 8
-	right_panel.offset_bottom = -8
-	root.add_child(right_panel)
-	panels[Game.State.DRAFT] = _build_draft_panel()
-	panels[Game.State.MARKET] = _build_market_panel()
-	panels[Game.State.LINEUP] = _build_lineup_panel()
-	panels[Game.State.BATTLE] = _build_battle_panel()
-	panels[Game.State.CYCLE_END] = _build_cycle_end_panel()
-	panels[Game.State.OVER] = _build_over_panel()
-	for p in panels.values():
-		right_panel.add_child(p)
-
-	# Consulta de habilidades: cubre el tablero.
-	skills_panel = PanelContainer.new()
-	skills_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	skills_panel.offset_left = 352
-	skills_panel.offset_right = -468
-	skills_panel.offset_top = 126
-	skills_panel.offset_bottom = -8
-	skills_panel.visible = false
-	root.add_child(skills_panel)
-	var sv := VBoxContainer.new()
-	skills_panel.add_child(sv)
-	var srow := HBoxContainer.new()
-	sv.add_child(srow)
-	var stitle := GameTheme.title("Habilidades y lo que tienes", 18)
-	stitle.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	srow.add_child(stitle)
-	var close := Button.new()
-	close.text = "Cerrar"
-	close.pressed.connect(_toggle_skills)
-	srow.add_child(close)
+	lv.add_child(log_label)
+	skills_panel = _overlay(Vector2(900, 600), false)
+	var skv := VBoxContainer.new()
+	skills_panel.add_child(skv)
+	skv.add_child(_overlay_header("Habilidades y lo que tienes", skills_panel))
 	skills_box = VBoxContainer.new()
 	skills_box.add_theme_constant_override("separation", 6)
-	sv.add_child(_scroll(skills_box))
+	skv.add_child(_scroll(skills_box))
+	help_panel = _overlay(Vector2(760, 600), false)
+	var hv := VBoxContainer.new()
+	help_panel.add_child(hv)
+	hv.add_child(_overlay_header("Cómo se juega", help_panel))
+	var help := RichTextLabel.new()
+	help.bbcode_enabled = true
+	help.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	help.add_theme_font_size_override("normal_font_size", 15)
+	help.add_theme_font_size_override("bold_font_size", 15)
+	help.add_theme_font_override("bold_font", GameTheme.bold_font)
+	help.text = HELP_TEXT
+	hv.add_child(help)
 
 	# Capa de efectos 2D: destello, carteles de tier, celebraciones y arrastre.
 	fx_layer = Control.new()
@@ -298,9 +372,9 @@ func _build_ui() -> void:
 	# Mano: las cartas del cuartel en la parte baja; se agrandan al pasar el ratón.
 	hand_panel = Control.new()
 	hand_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
-	hand_panel.offset_left = 352
-	hand_panel.offset_right = -468
-	hand_panel.offset_top = -190
+	hand_panel.offset_left = 12
+	hand_panel.offset_right = -356
+	hand_panel.offset_top = -250
 	hand_panel.offset_bottom = -6
 	hand_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hand_panel.visible = false
@@ -308,46 +382,213 @@ func _build_ui() -> void:
 	hand_box = HBoxContainer.new()
 	hand_box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	hand_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	hand_box.add_theme_constant_override("separation", -40)
+	hand_box.add_theme_constant_override("separation", -34)
 	hand_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hand_panel.add_child(hand_box)
 
+	# Menú: pantalla inicial y pausa.
+	menu_panel = Control.new()
+	menu_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	menu_panel.visible = false
+	root.add_child(menu_panel)
+	var veil := ColorRect.new()
+	veil.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	veil.color = Color(0.02, 0.01, 0.05, 0.6)
+	menu_panel.add_child(veil)
+	var mp := PanelContainer.new()
+	mp.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	mp.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	mp.grow_vertical = Control.GROW_DIRECTION_BOTH
+	var ms := GameTheme.panel_style()
+	ms.set_content_margin_all(28)
+	ms.bg_color = Color(0.05, 0.04, 0.09, 0.96)
+	ms.border_color = GameTheme.GOLD
+	mp.add_theme_stylebox_override("panel", ms)
+	menu_panel.add_child(mp)
+	menu_box = VBoxContainer.new()
+	menu_box.add_theme_constant_override("separation", 10)
+	menu_box.custom_minimum_size.x = 440
+	mp.add_child(menu_box)
+	menu_title = GameTheme.title("Adalides del demiurgo", 36)
+	menu_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	menu_title.autowrap_mode = TextServer.AUTOWRAP_WORD
+	menu_box.add_child(menu_title)
+	var sub := _label("Autobatallas de arquetipos y elementos")
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sub.add_theme_color_override("font_color", GameTheme.TEXT_DIM)
+	sub.name = "Subtitle"
+	menu_box.add_child(sub)
+	menu_box.add_child(_menu_button("Jugar", _start_game, true, "Play"))
+	menu_box.add_child(_menu_button("Reanudar", _toggle_pause_menu, true, "Resume"))
+	menu_box.add_child(_menu_button("Partida nueva", func() -> void:
+		_toggle_pause_menu()
+		_start_game(), false, "New"))
+	menu_box.add_child(_menu_button("Cómo se juega", func() -> void: _toggle_overlay(help_panel), false, "Help"))
+	menu_box.add_child(_menu_button("Menú principal", _show_main_menu, false, "Main"))
+	menu_box.add_child(_menu_button("Salir", func() -> void: get_tree().quit(), false, "Quit"))
+	var seed_row := HBoxContainer.new()
+	seed_row.name = "Seed"
+	seed_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	seed_row.add_theme_constant_override("separation", 8)
+	menu_box.add_child(seed_row)
+	var seed_label := _label("Semilla")
+	seed_label.add_theme_color_override("font_color", GameTheme.TEXT_DIM)
+	seed_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	seed_row.add_child(seed_label)
+	seed_edit = LineEdit.new()
+	seed_edit.text = "0"
+	seed_edit.placeholder_text = "número"
+	seed_edit.custom_minimum_size.x = 120
+	seed_edit.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	seed_row.add_child(seed_edit)
 
-func _toggle_log() -> void:
-	log_panel.visible = not log_panel.visible
-	log_toggle.text = "Crónica ▾" if log_panel.visible else "Crónica ▸"
+
+func _tool_button(text: String, on_pressed: Callable) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.pressed.connect(on_pressed)
+	return b
 
 
-## Barra y etiqueta de tiempo de una fase, al principio de su panel.
-func _phase_timer_row(state: int, box: VBoxContainer) -> void:
+func _menu_button(text: String, on_pressed: Callable, primary: bool, name_id: String) -> Button:
+	var b := Button.new()
+	b.name = name_id
+	b.text = text
+	b.custom_minimum_size = Vector2(0, 46)
+	b.add_theme_font_size_override("font_size", 17)
+	b.pressed.connect(on_pressed)
+	if primary:
+		GameTheme.primary_button(b)
+		b.add_theme_font_size_override("font_size", 19)
+	return b
+
+
+## Panel centrado que se muestra y oculta con un botón (tabla, crónica, habilidades…).
+func _overlay(min_size: Vector2, shrink: bool) -> PanelContainer:
+	var p := PanelContainer.new()
+	p.anchor_left = 0.5
+	p.anchor_right = 0.5
+	p.anchor_top = 0.5
+	p.anchor_bottom = 0.5
+	p.offset_left = -min_size.x / 2.0
+	p.offset_right = min_size.x / 2.0
+	p.offset_top = -min_size.y / 2.0
+	p.offset_bottom = min_size.y / 2.0
+	p.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	p.grow_vertical = Control.GROW_DIRECTION_BOTH
+	if shrink:
+		p.custom_minimum_size = min_size
+	p.visible = false
+	var s := GameTheme.panel_style()
+	s.bg_color = Color(0.05, 0.04, 0.09, 0.97)
+	s.set_content_margin_all(16)
+	p.add_theme_stylebox_override("panel", s)
+	root.add_child(p)
+	return p
+
+
+func _overlay_header(text: String, panel: Control) -> HBoxContainer:
 	var row := HBoxContainer.new()
-	box.add_child(row)
-	var bar := ProgressBar.new()
-	bar.min_value = 0
-	bar.max_value = 1
-	bar.value = 1
-	bar.show_percentage = false
-	bar.custom_minimum_size = Vector2(0, 14)
-	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var fill := StyleBoxFlat.new()
-	fill.bg_color = GameTheme.GOLD
-	fill.set_corner_radius_all(4)
-	bar.add_theme_stylebox_override("fill", fill)
-	var bg := StyleBoxFlat.new()
-	bg.bg_color = Color(0.1, 0.09, 0.14)
-	bg.border_color = GameTheme.GOLD_DIM
-	bg.set_border_width_all(1)
-	bg.set_corner_radius_all(4)
-	bar.add_theme_stylebox_override("background", bg)
-	row.add_child(bar)
-	var l := GameTheme.heading("⏱ 0 s")
-	l.autowrap_mode = TextServer.AUTOWRAP_OFF
-	l.custom_minimum_size.x = 64
-	row.add_child(l)
-	phase_bars[state] = bar
-	phase_labels[state] = l
+	var t := GameTheme.title(text, 19)
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(t)
+	var close := Button.new()
+	close.text = "✕"
+	close.pressed.connect(func() -> void: panel.visible = false)
+	row.add_child(close)
+	return row
 
+
+func _toggle_overlay(panel: Control) -> void:
+	var show := not panel.visible
+	for p in [standings_panel, log_panel, skills_panel, help_panel]:
+		p.visible = false
+	panel.visible = show
+	if show and panel == skills_panel and game != null:
+		_refresh_skills()
+
+
+# ---------------------------------------------------------------- menú
+
+func _show_main_menu() -> void:
+	get_tree().paused = false
+	paused_menu = false
+	in_main_menu = true
+	_auto_token += 1
+	battle_playing = false
+	game = null
+	table.clear()
+	table.visible = false
+	hand_panel.visible = false
+	top_bar.visible = false
+	side.visible = false
+	for p in [standings_panel, log_panel, skills_panel, help_panel]:
+		p.visible = false
+	for st in panels:
+		panels[st].visible = false
+	_decorate_board()
+	_camera_view(View.BOARD, false)
+	_set_menu_mode(true)
+	menu_panel.visible = true
+
+
+## Un tablero de muestra con campeones en reposo detrás del menú principal.
+func _decorate_board() -> void:
+	board3d.clear_pieces()
+	board3d.set_mat_visible(true)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var pool := Catalog.base_cards()
+	var cells := {}
+	for i in 5:
+		var a := Champion.new(pool[rng.randi_range(0, pool.size() - 1)])
+		a.side = 0
+		cells[Board.pos_from(0, 1 if i % 2 == 0 else 2, i)] = a
+		var b := Champion.new(pool[rng.randi_range(0, pool.size() - 1)])
+		b.side = 1
+		cells[Board.pos_from(1, 1 if i % 2 == 1 else 2, i)] = b
+	board3d.sync(cells, false)
+
+
+func _set_menu_mode(main: bool) -> void:
+	menu_title.text = "Adalides del demiurgo" if main else "Pausa"
+	menu_box.get_node("Subtitle").visible = main
+	menu_box.get_node("Play").visible = main
+	menu_box.get_node("Seed").visible = main
+	menu_box.get_node("Resume").visible = not main
+	menu_box.get_node("New").visible = not main
+	menu_box.get_node("Main").visible = not main
+
+
+func _start_game() -> void:
+	in_main_menu = false
+	menu_panel.visible = false
+	top_bar.visible = true
+	side.visible = true
+	_new_game()
+
+
+func _toggle_pause_menu() -> void:
+	if in_main_menu:
+		return
+	paused_menu = not paused_menu
+	get_tree().paused = paused_menu
+	_set_menu_mode(false)
+	menu_panel.visible = paused_menu
+	if not paused_menu:
+		help_panel.visible = false
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel"):
+		if help_panel.visible or skills_panel.visible or log_panel.visible or standings_panel.visible:
+			for p in [standings_panel, log_panel, skills_panel, help_panel]:
+				p.visible = false
+		else:
+			_toggle_pause_menu()
+
+
+# ---------------------------------------------------------------- tiempo de fase
 
 func _start_phase_timer(seconds: float) -> void:
 	phase_total = seconds
@@ -356,19 +597,17 @@ func _start_phase_timer(seconds: float) -> void:
 
 
 func _update_phase_timer() -> void:
-	var st := game.state
-	if not phase_bars.has(st):
+	timer_row.visible = game != null and game.state in [Game.State.MARKET, Game.State.LINEUP]
+	if not timer_row.visible:
 		return
-	var bar: ProgressBar = phase_bars[st]
-	bar.value = clampf(phase_left / phase_total, 0.0, 1.0)
-	var fill: StyleBoxFlat = bar.get_theme_stylebox("fill")
+	phase_bar.value = clampf(phase_left / phase_total, 0.0, 1.0)
+	var fill: StyleBoxFlat = phase_bar.get_theme_stylebox("fill")
 	fill.bg_color = Color(1, 0.4, 0.3) if phase_left <= 10 else GameTheme.GOLD
-	var l: Label = phase_labels[st]
-	l.text = "⏱ %d s" % ceili(phase_left)
+	phase_time.text = "%d s" % ceili(phase_left)
 
 
 func _process(delta: float) -> void:
-	if game == null or not phase_bars.has(game.state) or phase_left <= 0.0:
+	if game == null or phase_left <= 0.0 or game.state not in [Game.State.MARKET, Game.State.LINEUP]:
 		return
 	phase_left -= delta
 	_update_phase_timer()
@@ -410,18 +649,38 @@ func _label(text: String) -> Label:
 	return l
 
 
+## Bloque con marco para la columna lateral.
+func _block() -> PanelContainer:
+	var p := PanelContainer.new()
+	var s := GameTheme.panel_style()
+	s.set_content_margin_all(12)
+	p.add_theme_stylebox_override("panel", s)
+	return p
+
+
 func _build_draft_panel() -> Control:
 	var box := VBoxContainer.new()
-	box.add_child(GameTheme.heading("Draft inicial"))
-	box.add_child(_label("Pulsa el mazo para repartir. Pulsa una carta de la mesa para verla y «Tomar carta», o arrástrala hasta este panel. Cada adalid toma 2."))
+	box.add_theme_constant_override("separation", 8)
+	var block := _block()
+	box.add_child(block)
+	var bv := VBoxContainer.new()
+	bv.add_theme_constant_override("separation", 8)
+	block.add_child(bv)
+	bv.add_child(GameTheme.heading("Draft inicial · cada adalid toma 2", 15))
+	var tip := _label("Pulsa una carta o arrástrala hasta aquí.")
+	tip.add_theme_font_size_override("font_size", 13)
+	tip.add_theme_color_override("font_color", GameTheme.TEXT_DIM)
+	bv.add_child(tip)
 	card_detail = VBoxContainer.new()
-	card_detail.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	box.add_child(card_detail)
+	bv.add_child(card_detail)
 	var row := HBoxContainer.new()
-	box.add_child(row)
+	row.add_theme_constant_override("separation", 6)
+	bv.add_child(row)
 	take_button = Button.new()
 	take_button.text = "Tomar carta"
 	take_button.disabled = true
+	take_button.custom_minimum_size = Vector2(0, 44)
+	take_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	take_button.pressed.connect(_on_take_card)
 	GameTheme.primary_button(take_button)
 	row.add_child(take_button)
@@ -436,12 +695,12 @@ func _build_draft_panel() -> Control:
 func _build_market_panel() -> Control:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 8)
-	_phase_timer_row(Game.State.MARKET, box)
 	# Cabecera: nombre de la tienda y Éter en grande.
 	var head := PanelContainer.new()
 	var hs := GameTheme.panel_style()
 	hs.bg_color = Color(0.16, 0.11, 0.06, 0.95)
 	hs.border_color = GameTheme.GOLD
+	hs.set_content_margin_all(10)
 	head.add_theme_stylebox_override("panel", hs)
 	box.add_child(head)
 	var hrow := HBoxContainer.new()
@@ -449,52 +708,56 @@ func _build_market_panel() -> Control:
 	var hv := VBoxContainer.new()
 	hv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hrow.add_child(hv)
-	hv.add_child(GameTheme.title("Mercado del Demiurgo", 19))
-	var sub := _label("Cartas del mazo, mejoras y ventas. El tiempo corre.")
+	hv.add_child(GameTheme.title("Mercado del Demiurgo", 18))
+	var sub := _label("Compra, mejora o vende antes de que acabe el tiempo.")
 	sub.add_theme_font_size_override("font_size", 12)
 	sub.add_theme_color_override("font_color", GameTheme.TEXT_DIM)
 	hv.add_child(sub)
 	shop_eter = GameTheme.title("◆ 0", 30)
 	shop_eter.add_theme_color_override("font_color", Color(0.62, 0.8, 1.0))
 	hrow.add_child(shop_eter)
-	# Pistas de mejora como fichas con puntos de progreso.
-	box.add_child(GameTheme.heading("Mejoras del tablero personal"))
-	var trow := HBoxContainer.new()
-	trow.add_theme_constant_override("separation", 6)
-	box.add_child(trow)
+	# Mejoras del tablero personal: una fila por pista.
+	var ub := _block()
+	box.add_child(ub)
+	var uv := VBoxContainer.new()
+	uv.add_theme_constant_override("separation", 4)
+	ub.add_child(uv)
+	uv.add_child(GameTheme.heading("Mejoras", 14))
 	var icons := { Adalid.Track.CUARTEL: "⌂", Adalid.Track.BATTLE: "⚔", Adalid.Track.DICE: "⚅" }
 	var names := { Adalid.Track.CUARTEL: "Cuartel", Adalid.Track.BATTLE: "En batalla", Adalid.Track.DICE: "Dados" }
 	for track in [Adalid.Track.CUARTEL, Adalid.Track.BATTLE, Adalid.Track.DICE]:
-		var tile := PanelContainer.new()
-		tile.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var ts := GameTheme.panel_style()
-		ts.set_content_margin_all(6)
-		tile.add_theme_stylebox_override("panel", ts)
-		trow.add_child(tile)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		uv.add_child(row)
 		var tv := VBoxContainer.new()
-		tv.add_theme_constant_override("separation", 3)
-		tile.add_child(tv)
-		var tl := GameTheme.heading("%s %s" % [icons[track], names[track]], 14)
-		tv.add_child(tl)
+		tv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tv.add_theme_constant_override("separation", 0)
+		row.add_child(tv)
+		tv.add_child(GameTheme.heading("%s %s" % [icons[track], names[track]], 13))
 		var pips := Label.new()
 		pips.add_theme_font_size_override("font_size", 12)
 		pips.add_theme_color_override("font_color", GameTheme.GOLD)
 		tv.add_child(pips)
 		upgrade_pips[track] = pips
 		var b := Button.new()
+		b.custom_minimum_size = Vector2(118, 36)
+		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		b.pressed.connect(func() -> void:
 			game.human_upgrade(track)
 			_refresh_market())
-		tv.add_child(b)
+		row.add_child(b)
 		upgrade_buttons[track] = b
-	# Carta seleccionada y acciones.
-	box.add_child(GameTheme.heading("Carta elegida"))
+	# Carta elegida y acciones.
+	var cb := _block()
+	box.add_child(cb)
+	var cv := VBoxContainer.new()
+	cv.add_theme_constant_override("separation", 8)
+	cb.add_child(cv)
 	market_detail = VBoxContainer.new()
-	market_detail.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	box.add_child(market_detail)
+	cv.add_child(market_detail)
 	var arow := HBoxContainer.new()
 	arow.add_theme_constant_override("separation", 6)
-	box.add_child(arow)
+	cv.add_child(arow)
 	buy_button = Button.new()
 	buy_button.text = "Comprar"
 	buy_button.disabled = true
@@ -505,16 +768,17 @@ func _build_market_panel() -> Control:
 	GameTheme.primary_button(buy_button)
 	arow.add_child(buy_button)
 	refresh_button = Button.new()
-	refresh_button.text = "⟳ Refrescar (%d ◆)" % Rules.MARKET_REFRESH_COST
+	refresh_button.text = "⟳ %d ◆" % Rules.MARKET_REFRESH_COST
+	refresh_button.tooltip_text = "Refrescar el mercado"
 	refresh_button.custom_minimum_size = Vector2(0, 44)
 	refresh_button.add_theme_font_size_override("font_size", 15)
 	refresh_button.pressed.connect(_on_refresh_market)
 	arow.add_child(refresh_button)
 	var brow := HBoxContainer.new()
 	brow.add_theme_constant_override("separation", 6)
-	box.add_child(brow)
+	cv.add_child(brow)
 	sell_button = Button.new()
-	sell_button.text = "Vender de la mano"
+	sell_button.text = "Vender"
 	sell_button.pressed.connect(_on_sell)
 	brow.add_child(sell_button)
 	var done := Button.new()
@@ -527,19 +791,22 @@ func _build_market_panel() -> Control:
 
 
 func _build_lineup_panel() -> Control:
+	var block := _block()
 	var box := VBoxContainer.new()
-	_phase_timer_row(Game.State.LINEUP, box)
+	box.add_theme_constant_override("separation", 8)
+	block.add_child(box)
 	box.add_child(GameTheme.heading("Alineación"))
-	box.add_child(_label("Arrastra una carta de tu mano (abajo) a una casilla de tu lado, o púlsala y luego pulsa la casilla. Arrastra una ficha para moverla; suéltala fuera para quitarla. La fila junto a la línea dorada es el frente. Si se acaba el tiempo, la alineación actual (o la automática) va a la batalla."))
+	var tip := _label("Arrastra las cartas de tu mano a tu lado del tablero. La fila junto a la línea dorada es el frente.")
+	tip.add_theme_font_size_override("font_size", 13)
+	tip.add_theme_color_override("font_color", GameTheme.TEXT_DIM)
+	box.add_child(tip)
 	lineup_info = _label("")
 	box.add_child(lineup_info)
-	var spacer := Control.new()
-	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	box.add_child(spacer)
 	var buttons := HBoxContainer.new()
+	buttons.add_theme_constant_override("separation", 6)
 	box.add_child(buttons)
 	var auto := Button.new()
-	auto.text = "Automática"
+	auto.text = "Auto"
 	auto.pressed.connect(func() -> void:
 		lineup = Game.auto_lineup(game.human)
 		_refresh_lineup())
@@ -552,61 +819,130 @@ func _build_lineup_panel() -> Control:
 	buttons.add_child(clear)
 	var go := Button.new()
 	go.text = "¡A la batalla! →"
+	go.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	go.custom_minimum_size = Vector2(0, 44)
 	GameTheme.primary_button(go)
 	go.pressed.connect(func() -> void: _on_lineup_done(false))
 	buttons.add_child(go)
-	return box
+	return block
 
 
 func _build_battle_panel() -> Control:
+	var block := _block()
 	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 8)
+	block.add_child(box)
 	battle_title = GameTheme.heading("")
 	box.add_child(battle_title)
 	battle_status = _label("")
+	battle_status.add_theme_font_size_override("font_size", 13)
+	battle_status.add_theme_color_override("font_color", GameTheme.TEXT_DIM)
 	box.add_child(battle_status)
-	box.add_child(_label("Cada asalto lanzas tantos dados de tres caras (−, neutra, +) como marque tu pista de Dados; el motor los reparte entre los poderes: un + activa un poder de +, dos + hacen un ++. Observa el tablero: movimientos, daño y poderes se animan."))
 	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
 	box.add_child(row)
 	pause_button = Button.new()
 	pause_button.text = "⏸ Detener"
+	pause_button.custom_minimum_size = Vector2(0, 44)
+	pause_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	GameTheme.primary_button(pause_button)
 	pause_button.pressed.connect(_toggle_pause)
 	row.add_child(pause_button)
 	step_button = Button.new()
-	step_button.text = "Siguiente asalto ▶"
+	step_button.text = "Asalto ▶"
+	step_button.custom_minimum_size = Vector2(0, 44)
 	step_button.visible = false
 	step_button.pressed.connect(_step_round)
 	row.add_child(step_button)
-	return box
+	block.tooltip_text = "Cada asalto lanzas tantos dados de tres caras (−, neutra, +) como marque tu pista de Dados; el motor los reparte entre los poderes."
+	return block
 
 
+## Fin de ciclo: tabla de adalides centrada y el botón para seguir.
 func _build_cycle_end_panel() -> Control:
+	var p := PanelContainer.new()
+	p.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	p.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	p.grow_vertical = Control.GROW_DIRECTION_BOTH
+	p.custom_minimum_size.x = 520
+	var s := GameTheme.panel_style()
+	s.bg_color = Color(0.05, 0.04, 0.09, 0.97)
+	s.border_color = GameTheme.GOLD
+	s.set_content_margin_all(20)
+	p.add_theme_stylebox_override("panel", s)
 	var box := VBoxContainer.new()
-	box.add_child(GameTheme.heading("Fin del ciclo"))
-	box.add_child(_label("Revisa la crónica y continúa."))
+	box.add_theme_constant_override("separation", 10)
+	p.add_child(box)
+	var t := GameTheme.title("Fin del ciclo", 24)
+	t.name = "Title"
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(t)
+	var table_label := RichTextLabel.new()
+	table_label.name = "Table"
+	table_label.bbcode_enabled = true
+	table_label.fit_content = true
+	table_label.scroll_active = false
+	table_label.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+	table_label.add_theme_font_size_override("normal_font_size", 15)
+	box.add_child(table_label)
 	var next := Button.new()
 	next.text = "Siguiente ciclo →"
+	next.custom_minimum_size = Vector2(0, 46)
 	GameTheme.primary_button(next)
 	next.pressed.connect(_next_cycle)
 	box.add_child(next)
-	return box
+	return p
 
 
 func _build_over_panel() -> Control:
+	var p := PanelContainer.new()
+	p.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	p.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	p.grow_vertical = Control.GROW_DIRECTION_BOTH
+	p.custom_minimum_size.x = 520
+	var s := GameTheme.panel_style()
+	s.bg_color = Color(0.05, 0.04, 0.09, 0.97)
+	s.border_color = GameTheme.GOLD
+	s.set_content_margin_all(20)
+	p.add_theme_stylebox_override("panel", s)
 	var box := VBoxContainer.new()
-	var l := GameTheme.title("", 22)
+	box.add_theme_constant_override("separation", 10)
+	p.add_child(box)
+	var l := GameTheme.title("", 24)
 	l.name = "Result"
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD
 	box.add_child(l)
-	return box
+	var table_label := RichTextLabel.new()
+	table_label.name = "Table"
+	table_label.bbcode_enabled = true
+	table_label.fit_content = true
+	table_label.scroll_active = false
+	table_label.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+	table_label.add_theme_font_size_override("normal_font_size", 15)
+	box.add_child(table_label)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	box.add_child(row)
+	var again := Button.new()
+	again.text = "Otra partida"
+	again.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	again.custom_minimum_size = Vector2(0, 46)
+	GameTheme.primary_button(again)
+	again.pressed.connect(_start_game)
+	row.add_child(again)
+	var menu := Button.new()
+	menu.text = "Menú principal"
+	menu.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	menu.pressed.connect(_show_main_menu)
+	row.add_child(menu)
+	return p
 
 
 # ---------------------------------------------------------------- habilidades
 
 func _toggle_skills() -> void:
-	skills_panel.visible = not skills_panel.visible
-	if skills_panel.visible:
-		_refresh_skills()
+	_toggle_overlay(skills_panel)
 
 
 func _refresh_skills() -> void:
@@ -669,11 +1005,13 @@ func _add_skill_row(icon: Texture2D, color: Color, name: String, in_cuartel: int
 func _new_game() -> void:
 	_auto_token += 1
 	battle_playing = false
-	game = Game.new(NAMES, int(seed_spin.value))
+	game = Game.new(NAMES, int(seed_edit.text) if seed_edit.text.is_valid_int() else hash(seed_edit.text))
 	game.set_human(0)
 	board3d.clear_pieces()
 	table.clear()
 	table.visible = false
+	for st in panels:
+		panels[st].visible = false
 	_next_cycle()
 
 
@@ -692,7 +1030,14 @@ func _enter_state() -> void:
 	if game.state != Game.State.DRAFT and game.state != Game.State.MARKET:
 		table.clear()
 		table.visible = false
-	board3d.set_mat_visible(game.state not in [Game.State.DRAFT, Game.State.MARKET])
+	var at_table := game.state in [Game.State.DRAFT, Game.State.MARKET]
+	board3d.set_mat_visible(not at_table)
+	if game.state == Game.State.DRAFT:
+		_camera_view(View.DRAFT, true)
+	elif game.state == Game.State.MARKET:
+		_camera_view(View.MARKET, true)
+	else:
+		_camera_view(View.BOARD, true)
 	match game.state:
 		Game.State.DRAFT:
 			board3d.clear_pieces()
@@ -715,8 +1060,9 @@ func _enter_state() -> void:
 		Game.State.CYCLE_END:
 			if not game.last_battles.is_empty():
 				board3d.sync(game.last_battles[-1].board.cells, false)
+			(panels[Game.State.CYCLE_END].find_child("Title", true, false) as Label).text = "Fin del ciclo %d" % game.cycle
 		Game.State.OVER:
-			var res: Label = panels[Game.State.OVER].get_node("Result")
+			var res: Label = panels[Game.State.OVER].find_child("Result", true, false)
 			var w := game.winner()
 			if game.demiurge_wins:
 				res.text = "Los últimos adalides cayeron a la vez: gana el Demiurgo."
@@ -744,7 +1090,7 @@ func _refresh_draft() -> void:
 	elif table_busy:
 		hint.text = "Repartiendo..."
 	elif my_turn:
-		hint.text = "Te toca: pulsa una carta y «Tomar carta», o arrástrala al panel de la derecha."
+		hint.text = "Te toca elegir."
 	else:
 		hint.text = "Eligen los demás adalides..."
 	_show_detail(card_detail, selected_card)
@@ -773,7 +1119,7 @@ func _show_detail(box: VBoxContainer, card: ChampionData) -> void:
 	elif game.state == Game.State.MARKET and not game.human.can_pay(card.cost):
 		note = "no tienes Éter suficiente"
 	cv.setup(card, null, note)
-	cv.custom_minimum_size.x = 200
+	cv.custom_minimum_size.x = 240
 	box.add_child(cv)
 	var power := _label("%s: %s" % [card.power.get("name", ""), card.power.get("text", "")])
 	power.add_theme_font_size_override("font_size", 13)
@@ -851,7 +1197,7 @@ func _deal_market() -> void:
 
 func _refresh_market() -> void:
 	var h := game.human
-	hint.text = "Compra con el tiempo que marca la barra; al acabarse pasas a la alineación."
+	hint.text = "Elige una carta de la mesa o de tu mano."
 	shop_eter.text = "◆ %d" % h.eter
 	for track in upgrade_buttons:
 		var b: Button = upgrade_buttons[track]
@@ -878,7 +1224,7 @@ func _refresh_market() -> void:
 		selected_cuartel = null
 	_refresh_hand()
 	sell_button.disabled = selected_cuartel == null
-	sell_button.text = "Vender de la mano" if selected_cuartel == null else "Vender %s (%d ◆)" % [selected_cuartel.data.display_name, h.sell_value(selected_cuartel)]
+	sell_button.text = "Vender" if selected_cuartel == null else "Vender (+%d ◆)" % h.sell_value(selected_cuartel)
 	_update_deck_label()
 	_refresh()
 
@@ -896,6 +1242,7 @@ func _refresh_hand() -> void:
 		elif game.state == Game.State.LINEUP:
 			extra = "en el tablero ✔" if lineup.values().has(ch) else "en la mano"
 		cv.setup(ch.data, ch, extra)
+		cv.custom_minimum_size.x = HAND_CARD_W
 		cv.selected = ch == selected_cuartel or ch == pending_card
 		cv.size_flags_vertical = Control.SIZE_SHRINK_END
 		cv.scale = Vector2(HAND_SCALE, HAND_SCALE)
@@ -913,6 +1260,11 @@ func _refresh_hand() -> void:
 				if pending_card != null:
 					_begin_drag({ "kind": "cuartel_card", "champion": ch }, Icons.archetype(ch.data.archetype), ch.data.display_name))
 		hand_box.add_child(cv)
+	var n := h.cuartel.size()
+	if n > 1:
+		var visible_w := HAND_CARD_W * HAND_SCALE
+		var pitch := minf(visible_w + 10.0, (hand_panel.size.x - visible_w) / float(n - 1))
+		hand_box.add_theme_constant_override("separation", int(pitch - HAND_CARD_W))
 
 
 ## La carta crece desde su borde inferior (pivote abajo); nunca se mueve su
@@ -922,7 +1274,7 @@ func _on_hand_hover(cv: CardView) -> void:
 		return
 	cv.z_index = 10
 	var tw := create_tween()
-	tw.tween_property(cv, "scale", Vector2(1.08, 1.08), 0.12).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(cv, "scale", Vector2(1.12, 1.12), 0.12).set_trans(Tween.TRANS_SINE)
 
 
 func _on_hand_unhover(cv: CardView) -> void:
@@ -938,7 +1290,7 @@ func _finish_market() -> void:
 		return
 	phase_left = 0.0
 	if table_busy:
-		await get_tree().create_timer(0.6).timeout
+		await get_tree().create_timer(0.6, false).timeout
 	game.finish_market()
 	_enter_state()
 
@@ -1121,7 +1473,7 @@ func _battle_loop(token: int) -> void:
 		var left := AUTO_ROUND_SECONDS
 		while left > 0.0 and token == _auto_token and not battle_paused and game.state == Game.State.BATTLE:
 			battle_status.text = "Siguiente asalto en %.1f s." % left
-			await get_tree().create_timer(0.25).timeout
+			await get_tree().create_timer(0.25, false).timeout
 			left -= 0.25
 
 
@@ -1189,7 +1541,7 @@ func _animate_events(battle: Battle, evs: Array) -> void:
 						await piece.lunge(target_piece.position).finished
 					else:
 						Fx.beam(board3d, piece.position, target_piece.position, Icons.color_of(ch.data))
-						await get_tree().create_timer(0.2).timeout
+						await get_tree().create_timer(0.2, false).timeout
 			"damage":
 				if piece != null:
 					piece.show_hp(e["hp"])
@@ -1200,20 +1552,20 @@ func _animate_events(battle: Battle, evs: Array) -> void:
 						Fx.burst(board3d, piece.position + Vector3(0, 0.5, 0), Color(1, 0.3, 0.2) if not e["power"] else Color(1, 0.6, 0.2), 14, 0.05)
 					else:
 						Fx.float_text(board3d, piece.position, "0", Color(0.7, 0.7, 0.7), 40)
-					await get_tree().create_timer(0.22).timeout
+					await get_tree().create_timer(0.22, false).timeout
 			"heal":
 				if piece != null:
 					piece.show_hp(e["hp"])
 					Fx.float_text(board3d, piece.position, "+%d" % e["amount"], Color(0.5, 1, 0.5))
 					Fx.burst(board3d, piece.position + Vector3(0, 0.5, 0), Color(0.5, 1, 0.5), 16, 0.05)
-					await get_tree().create_timer(0.2).timeout
+					await get_tree().create_timer(0.2, false).timeout
 			"power":
 				if piece != null:
 					var color: Color = Icons.ELEMENT_COLORS.get(e.get("element", -1), GameTheme.GOLD)
 					Fx.ring(board3d, piece.position, color, 1.0)
 					Fx.burst(board3d, piece.position + Vector3(0, 0.6, 0), color, 36, 0.07)
 					Fx.float_text(board3d, piece.position + Vector3(0, 0.4, 0), e["name"], Color(1, 0.9, 0.6), 48)
-					await get_tree().create_timer(0.45).timeout
+					await get_tree().create_timer(0.45, false).timeout
 			"tier":
 				var color: Color = Icons.ELEMENT_COLORS.get(e.get("element", -1), GameTheme.GOLD)
 				var side: int = e["side"]
@@ -1223,28 +1575,28 @@ func _animate_events(battle: Battle, evs: Array) -> void:
 					Fx.burst(board3d, piece.position + Vector3(0, 0.6, 0), color, 30, 0.07)
 				_tier_banner(side, e["name"], color)
 				_screen_flash(color)
-				await get_tree().create_timer(0.6).timeout
+				await get_tree().create_timer(0.6, false).timeout
 			"dodge":
 				if piece != null:
 					Fx.float_text(board3d, piece.position, "¡esquiva!", Color(0.7, 0.95, 1), 44)
-					await get_tree().create_timer(0.18).timeout
+					await get_tree().create_timer(0.18, false).timeout
 			"freeze":
 				if piece != null:
 					piece.refresh()
 					piece.flash(Color(0.6, 0.85, 1))
 					Fx.float_text(board3d, piece.position, "❄ congelado", Color(0.6, 0.85, 1), 44)
-					await get_tree().create_timer(0.18).timeout
+					await get_tree().create_timer(0.18, false).timeout
 			"curse":
 				if piece != null:
 					piece.refresh()
 					Fx.float_text(board3d, piece.position, "☠ maldito", Color(0.8, 0.5, 1), 44)
-					await get_tree().create_timer(0.18).timeout
+					await get_tree().create_timer(0.18, false).timeout
 			"death":
 				if piece != null:
 					piece.play_clip("death")
 					Fx.burst(board3d, piece.position + Vector3(0, 0.4, 0), Color(0.5, 0.5, 0.55), 30, 0.08)
 					Fx.float_text(board3d, piece.position, "✖", Color(0.9, 0.9, 0.9), 60)
-					await get_tree().create_timer(0.7 if piece.has_model() else 0.25).timeout
+					await get_tree().create_timer(0.7 if piece.has_model() else 0.25, false).timeout
 	board3d.sync(battle.board.cells, true)
 	_refresh()
 
@@ -1301,7 +1653,7 @@ func _refresh_battle() -> void:
 	var battle := game.current_battle
 	if battle == null:
 		return
-	hint.text = "Fichas con anillo rojo: rival. Detén la batalla para verla asalto a asalto."
+	hint.text = "Anillo azul: los tuyos · rojo: el rival."
 	battle_title.text = "Batalla contra %s — asalto %d de %d" % [battle.adalids[1].display_name, battle.round_no, Rules.ROUNDS_PER_BATTLE]
 	battle_status.text = "Detenida. Pulsa «Siguiente asalto» para avanzar." if battle_paused else "Automática: un asalto cada %d s." % int(AUTO_ROUND_SECONDS)
 	pause_button.text = "▶ Reanudar" if battle_paused else "⏸ Detener"
@@ -1314,6 +1666,8 @@ func _refresh_battle() -> void:
 # ---------------------------------------------------------------- refresco general
 
 func _refresh() -> void:
+	if game == null:
+		return
 	for st in panels:
 		panels[st].visible = st == game.state
 	phase_title.text = {
@@ -1326,18 +1680,24 @@ func _refresh() -> void:
 	}.get(game.state, "")
 	if game.state in [Game.State.CYCLE_END, Game.State.OVER]:
 		hint.text = ""
+	_update_phase_timer()
 	var h := game.human
-	var racha := "—"
+	var racha := ""
 	if h.streak > 0:
-		racha = "%s %d (+%d ◆)" % ["victorias" if h.streak_is_win else "derrotas", h.streak, h.streak_bonus()]
-	hud.text = "[color=#7ee07e]♥ %d[/color]   [color=#9ecbff]◆ %d[/color]   [color=#f0d080]Racha %s[/color]   Cuartel %d/%d · Héroes %d/%d · En batalla %d · Dados %d" % [
-		h.life, h.eter, racha, h.base_count(), h.cuartel_capacity(), h.hero_count(), h.hero_slots(), h.battle_size(), h.dice_count()]
-	var lines: PackedStringArray = []
+		racha = "   [color=#f0d080]%s %d[/color]" % ["▲" if h.streak_is_win else "▼", h.streak]
+	hud.text = "[color=#7ee07e]♥ %d[/color]   [color=#9ecbff]◆ %d[/color]%s" % [h.life, h.eter, racha]
+	hud.tooltip_text = "Vida %d · Éter %d · Racha %s · Cuartel %d/%d · Héroes %d/%d · En batalla %d · Dados %d" % [
+		h.life, h.eter, ("%s %d (+%d ◆)" % ["victorias" if h.streak_is_win else "derrotas", h.streak, h.streak_bonus()]) if h.streak > 0 else "—",
+		h.base_count(), h.cuartel_capacity(), h.hero_count(), h.hero_slots(), h.battle_size(), h.dice_count()]
+	var lines: PackedStringArray = ["[table=6][cell padding=6,2,6,2][b]Adalid[/b][/cell][cell padding=6,2,6,2][b]♥[/b][/cell][cell padding=6,2,6,2][b]◆[/b][/cell][cell padding=6,2,6,2][b]Cuartel[/b][/cell][cell padding=6,2,6,2][b]Batalla[/b][/cell][cell padding=6,2,6,2][b]Dados[/b][/cell]"]
 	for a in game.adalids:
 		var color := "#f0d080" if a == game.human else ("#777777" if a.eliminated else "#e8e4dc")
-		lines.append("[color=%s]%s%s[/color]  [color=#7ee07e]♥%d[/color] [color=#9ecbff]◆%d[/color]  cuartel %d/%d · batalla %d · dados %d" % [
+		lines.append("[cell padding=6,2,6,2][color=%s]%s%s[/color][/cell][cell padding=6,2,6,2][color=#7ee07e]%d[/color][/cell][cell padding=6,2,6,2][color=#9ecbff]%d[/color][/cell][cell padding=6,2,6,2]%d/%d[/cell][cell padding=6,2,6,2]%d[/cell][cell padding=6,2,6,2]%d[/cell]" % [
 			color, "► " if a == game.human else "", a.display_name, a.life, a.eter, a.base_count(), a.cuartel_capacity(), a.battle_size(), a.dice_count()])
+	lines.append("[/table]")
 	standings.text = "\n".join(lines)
+	for st in [Game.State.CYCLE_END, Game.State.OVER]:
+		(panels[st].find_child("Table", true, false) as RichTextLabel).text = standings.text
 	var text := "\n".join(game.log)
 	if game.current_battle != null:
 		text += "\n" + "\n".join(game.current_battle.log)
@@ -1347,6 +1707,10 @@ func _refresh() -> void:
 # ---------------------------------------------------------------- capturas
 
 func _screenshot_tour(dir: String) -> void:
+	_show_main_menu()
+	await _snap(dir.path_join("0_menu.png"))
+	_start_game()
+	await get_tree().create_timer(0.8, false).timeout
 	await _snap(dir.path_join("1_draft_mazo.png"))
 	await _on_deck_clicked()
 	while table_busy:
@@ -1375,12 +1739,16 @@ func _screenshot_tour(dir: String) -> void:
 		table.select(selected_card)
 		_refresh_market()
 	await _snap(dir.path_join("2_mercado.png"))
-	_toggle_skills()
+	_toggle_overlay(skills_panel)
 	await _snap(dir.path_join("2_habilidades.png"))
-	_toggle_skills()
+	_toggle_overlay(skills_panel)
+	_toggle_pause_menu()
+	await _snap(dir.path_join("2_pausa.png"))
+	_toggle_pause_menu()
 	if game.state == Game.State.MARKET:
 		await _on_buy_card()
 		_finish_market()
+		await get_tree().create_timer(0.8, false).timeout
 		pending_card = game.human.cuartel[0]
 		_refresh_lineup()
 		await _snap(dir.path_join("3_alineacion.png"))
@@ -1390,7 +1758,7 @@ func _screenshot_tour(dir: String) -> void:
 		_toggle_pause()
 		await _snap(dir.path_join("4_batalla.png"))
 		_step_round()
-		await get_tree().create_timer(0.9).timeout
+		await get_tree().create_timer(0.9, false).timeout
 		await _snap(dir.path_join("5_batalla_animando.png"))
 		while battle_playing:
 			await get_tree().process_frame
@@ -1398,8 +1766,10 @@ func _screenshot_tour(dir: String) -> void:
 		_toggle_pause()
 		while game.state == Game.State.BATTLE:
 			await get_tree().process_frame
-		await get_tree().create_timer(0.6).timeout
+		await get_tree().create_timer(0.6, false).timeout
 		await _snap(dir.path_join("7_resultado.png"))
+		await get_tree().create_timer(2.4, false).timeout
+		await _snap(dir.path_join("8_fin_ciclo.png"))
 	get_tree().quit()
 
 

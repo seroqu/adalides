@@ -23,7 +23,7 @@ var selected: bool = false:
 func setup(p_card: ChampionData, p_champion: Champion = null, extra := "") -> void:
 	card = p_card
 	champion = p_champion
-	custom_minimum_size = Vector2(136, 0)
+	custom_minimum_size = Vector2(156, 0)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	tooltip_text = "%s\n%s" % [card.power.get("name", ""), card.power.get("text", "")]
@@ -47,7 +47,7 @@ func setup(p_card: ChampionData, p_champion: Champion = null, extra := "") -> vo
 	for a in card.archetypes():
 		var arch := TextureRect.new()
 		arch.texture = Icons.archetype(a)
-		arch.custom_minimum_size = Vector2(34, 34)
+		arch.custom_minimum_size = Vector2(40, 40)
 		arch.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		arch.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		arch.modulate = Color(0.08, 0.06, 0.1)
@@ -58,7 +58,7 @@ func setup(p_card: ChampionData, p_champion: Champion = null, extra := "") -> vo
 	if card.element >= 0:
 		var elem := TextureRect.new()
 		elem.texture = Icons.element(card.element)
-		elem.custom_minimum_size = Vector2(30, 30)
+		elem.custom_minimum_size = Vector2(34, 34)
 		elem.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		elem.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		elem.modulate = Color(0.08, 0.06, 0.1)
@@ -72,7 +72,7 @@ func setup(p_card: ChampionData, p_champion: Champion = null, extra := "") -> vo
 	var name_label := Label.new()
 	name_label.text = card.display_name
 	name_label.add_theme_font_override("font", GameTheme.bold_font)
-	name_label.add_theme_font_size_override("font_size", 15)
+	name_label.add_theme_font_size_override("font_size", 16)
 	name_label.add_theme_color_override("font_color", Color.WHITE)
 	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD
 	v.add_child(name_label)
@@ -83,7 +83,7 @@ func setup(p_card: ChampionData, p_champion: Champion = null, extra := "") -> vo
 	stats.fit_content = true
 	stats.scroll_active = false
 	stats.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
-	stats.add_theme_font_size_override("normal_font_size", 15)
+	stats.add_theme_font_size_override("normal_font_size", 16)
 	stats.add_theme_font_override("normal_font", GameTheme.bold_font)
 	var copies := ""
 	if champion != null and champion.copies > 1:
