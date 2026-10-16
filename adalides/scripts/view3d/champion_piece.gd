@@ -1,7 +1,12 @@
 class_name ChampionPiece
 extends Node3D
-## Ficha 3D de un campeón: base del color del elemento, icono de arquetipo,
-## icono de elemento y etiqueta con nombre y vida. Todo mira a la cámara.
+## Ficha 3D de un campeón: base del color del elemento, anillo del bando,
+## icono de arquetipo, icono de elemento, barra de vida con estela de daño
+## y marcas de estado (❄ congelado, ◌ sigilo, ☠ maldito). Sin nombre: el
+## color y el símbolo bastan.
+
+const BAR_W := 0.7
+const BAR_H := 0.09
 
 var champion: Champion
 var side: int = 0
@@ -9,7 +14,12 @@ var _base: MeshInstance3D
 var _ring: MeshInstance3D
 var _arch: Sprite3D
 var _elem: Sprite3D
-var _label: Label3D
+var _status: Label3D
+var _bar_bg: MeshInstance3D
+var _bar_ghost: MeshInstance3D
+var _bar_fill: MeshInstance3D
+var _fill_mat: StandardMaterial3D
+var _shown_hp: int = -1
 
 
 func setup(ch: Champion, p_side: int) -> void:
@@ -43,41 +53,87 @@ func setup(ch: Champion, p_side: int) -> void:
 	add_child(_ring)
 	_arch = Sprite3D.new()
 	_arch.texture = Icons.archetype(ch.data.archetype)
-	_arch.pixel_size = 0.0040
+	_arch.pixel_size = 0.0044
 	_arch.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	_arch.position.y = 0.42
+	_arch.position.y = 0.5
 	_arch.shaded = false
 	add_child(_arch)
 	if ch.data.element >= 0:
 		_elem = Sprite3D.new()
 		_elem.texture = Icons.element(ch.data.element)
 		_elem.modulate = color
-		_elem.pixel_size = 0.0020
+		_elem.pixel_size = 0.0022
 		_elem.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		_elem.position = Vector3(0.3, 0.72, 0)
+		_elem.position = Vector3(0.32, 0.78, 0)
 		_elem.shaded = false
 		add_child(_elem)
-	_label = Label3D.new()
-	_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	_label.pixel_size = 0.0034
-	_label.font_size = 42
-	_label.outline_size = 12
-	_label.outline_modulate = Color(0, 0, 0, 0.95)
-	_label.no_depth_test = true
-	# Tus fichas llevan la etiqueta delante (hacia la cámara); las del rival, encima.
-	_label.position = Vector3(0, 0.1, -0.48) if side == 0 else Vector3(0, 1.3, 0)
-	add_child(_label)
+	# Barra de vida: fondo, estela (daño reciente) y relleno, ancladas a la izquierda.
+	_bar_bg = _bar_quad(Color(0.05, 0.05, 0.08, 0.9), BAR_W + 0.06, BAR_H + 0.05, 0)
+	_bar_ghost = _bar_quad(Color(1.0, 0.85, 0.3, 1.0), BAR_W, BAR_H, 1)
+	_bar_fill = _bar_quad(Color(0.4, 0.9, 0.4, 1.0), BAR_W, BAR_H, 2)
+	_fill_mat = _bar_fill.material_override
+	_status = Label3D.new()
+	_status.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_status.pixel_size = 0.004
+	_status.font_size = 40
+	_status.outline_size = 10
+	_status.no_depth_test = true
+	_status.position.y = 1.32
+	add_child(_status)
 	refresh()
 
 
-## Muestra una vida concreta (durante la animación de un asalto).
+## Barra anclada a la izquierda: el quad crece desde su origen (center_offset) y
+## el origen se coloca medio ancho hacia +X, que con la cámara del juego es la
+## izquierda de la pantalla.
+func _bar_quad(color: Color, w: float, h: float, priority: int) -> MeshInstance3D:
+	var m := MeshInstance3D.new()
+	var quad := QuadMesh.new()
+	quad.size = Vector2(w, h)
+	quad.center_offset = Vector3(w / 2.0, 0, 0)
+	m.mesh = quad
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	mat.billboard_keep_scale = true
+	mat.no_depth_test = true
+	mat.render_priority = priority
+	m.material_override = mat
+	m.position = Vector3(BAR_W / 2.0, 1.08, 0)
+	add_child(m)
+	return m
+
+
+func _ratio(hp: int) -> float:
+	return clampf(float(hp) / maxf(champion.max_hp(), 1), 0.0, 1.0)
+
+
+func _fill_color(ratio: float) -> Color:
+	if ratio > 0.5:
+		return Color(0.4, 0.9, 0.4)
+	if ratio > 0.25:
+		return Color(1.0, 0.8, 0.3)
+	return Color(1.0, 0.35, 0.3)
+
+
+## Muestra una vida concreta con animación: el relleno cae de golpe y la
+## estela amarilla se consume después (efecto de pérdida de vida).
 func show_hp(hp: int) -> void:
-	_hp_override = hp
-	refresh()
-	_hp_override = -1
-
-
-var _hp_override: int = -1
+	var ratio := _ratio(hp)
+	var old := _ratio(_shown_hp) if _shown_hp >= 0 else _ratio(champion.hp)
+	_shown_hp = hp
+	var tw := create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(_bar_fill, "scale:x", maxf(ratio, 0.001), 0.12)
+	tw.tween_property(_fill_mat, "albedo_color", _fill_color(ratio), 0.12)
+	if ratio < old:
+		_bar_ghost.scale.x = maxf(old, 0.001)
+		tw.chain().tween_property(_bar_ghost, "scale:x", maxf(ratio, 0.001), 0.45).set_delay(0.35).set_trans(Tween.TRANS_SINE)
+	else:
+		_bar_ghost.scale.x = maxf(ratio, 0.001)
+	_refresh_status()
 
 
 func flash(color: Color) -> void:
@@ -106,9 +162,19 @@ func lunge(target: Vector3) -> Tween:
 	return tw
 
 
+## Sincroniza la barra y las marcas con el estado real del campeón, sin animar.
 func refresh() -> void:
 	if champion == null:
 		return
+	_shown_hp = champion.hp
+	var ratio := _ratio(champion.hp)
+	_bar_fill.scale.x = maxf(ratio, 0.001)
+	_bar_ghost.scale.x = maxf(ratio, 0.001)
+	_fill_mat.albedo_color = _fill_color(ratio)
+	_refresh_status()
+
+
+func _refresh_status() -> void:
 	var tags: PackedStringArray = []
 	if champion.frozen > 0:
 		tags.append("❄")
@@ -116,13 +182,7 @@ func refresh() -> void:
 		tags.append("◌")
 	if champion.cursed:
 		tags.append("☠")
-	var name := champion.data.display_name.replace(" de ", "\nde ")
-	var hp := champion.hp if _hp_override < 0 else _hp_override
-	_label.text = "%s\n%d/%d %s" % [name, hp, champion.max_hp(), " ".join(tags)]
-	_label.modulate = Color.WHITE if (champion.alive or _hp_override > 0) else Color(0.5, 0.5, 0.5)
-	var ratio := float(hp) / maxf(champion.max_hp(), 1)
-	_base.scale = Vector3(1, maxf(ratio, 0.2), 1)
-	if champion.stealth:
-		_arch.modulate = Color(1, 1, 1, 0.45)
-	else:
-		_arch.modulate = Color.WHITE
+	_status.text = " ".join(tags)
+	_arch.modulate = Color(1, 1, 1, 0.45) if champion.stealth else Color.WHITE
+	if champion.frozen > 0:
+		_arch.modulate = Color(0.6, 0.85, 1.0)
