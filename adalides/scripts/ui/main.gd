@@ -298,15 +298,15 @@ func _build_ui() -> void:
 	hand_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	hand_panel.offset_left = 352
 	hand_panel.offset_right = -468
-	hand_panel.offset_top = -150
-	hand_panel.offset_bottom = -4
+	hand_panel.offset_top = -190
+	hand_panel.offset_bottom = -6
 	hand_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hand_panel.visible = false
 	root.add_child(hand_panel)
 	hand_box = HBoxContainer.new()
 	hand_box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	hand_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	hand_box.add_theme_constant_override("separation", -34)
+	hand_box.add_theme_constant_override("separation", -40)
 	hand_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hand_panel.add_child(hand_box)
 
@@ -846,8 +846,9 @@ func _refresh_hand() -> void:
 		cv.setup(ch.data, ch, extra)
 		cv.selected = ch == selected_cuartel or ch == pending_card
 		cv.size_flags_vertical = Control.SIZE_SHRINK_END
-		cv.pivot_offset = Vector2(68, 150)
 		cv.scale = Vector2(HAND_SCALE, HAND_SCALE)
+		# El pivote va en el borde inferior central para que la carta crezca hacia arriba.
+		cv.resized.connect(func() -> void: cv.pivot_offset = Vector2(cv.size.x / 2.0, cv.size.y))
 		cv.hovered.connect(_on_hand_hover)
 		cv.unhovered.connect(_on_hand_unhover)
 		cv.pressed.connect(func() -> void:
@@ -860,10 +861,6 @@ func _refresh_hand() -> void:
 				if pending_card != null:
 					_begin_drag({ "kind": "cuartel_card", "champion": ch }, Icons.archetype(ch.data.archetype), ch.data.display_name))
 		hand_box.add_child(cv)
-	await get_tree().process_frame
-	for cv in hand_box.get_children():
-		if is_instance_valid(cv):
-			cv.pivot_offset = Vector2(cv.size.x / 2.0, cv.size.y)
 
 
 func _on_hand_hover(cv: CardView) -> void:
