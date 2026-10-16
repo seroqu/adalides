@@ -209,7 +209,13 @@ func test_human_flow() -> void:
 	var rounds := 0
 	while g.begin_cycle() and cycles < 300:
 		cycles += 1
+		if cycles == 1:
+			check(g.human.eter == Rules.STARTING_ETER, "el primer ciclo no se cobra")
 		while g.state == Game.State.DRAFT:
+			if g.draft_current() != g.human:
+				var step := g.draft_step()
+				check(step.is_empty() or step.has("adalid"), "la IA elige paso a paso")
+				continue
 			check(not g.draft_pool.is_empty(), "hay cartas en el draft")
 			var pick: ChampionData = null
 			for card in g.draft_pool:
@@ -217,8 +223,7 @@ func test_human_flow() -> void:
 					pick = card
 					break
 			if pick == null:
-				g.draft_order.pop_front()
-				g._run_draft()
+				g.human_draft_skip()
 			else:
 				check(g.human_draft_pick(pick), "el humano toma una carta")
 		if g.state == Game.State.MARKET:

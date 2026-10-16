@@ -91,29 +91,53 @@ func begin_cycle() -> bool:
 			round_order.reverse()
 		draft_order.append_array(round_order)
 	state = State.DRAFT
-	_run_draft()
+	if not human_in_play():
+		_run_draft()
 	return true
+
+
+## A quién le toca elegir en el draft (null si terminó).
+func draft_current() -> Adalid:
+	return null if draft_order.is_empty() else draft_order[0]
+
+
+## Un paso del draft: si le toca a una IA, elige y devuelve { adalid, card };
+## si le toca al humano devuelve { "human": true }; si terminó, cierra el draft
+## y devuelve {}.
+func draft_step() -> Dictionary:
+	if state != State.DRAFT:
+		return {}
+	if draft_order.is_empty():
+		_finish_draft()
+		return {}
+	var a: Adalid = draft_order[0]
+	if a == human:
+		return { "human": true }
+	draft_order.pop_front()
+	var card := ai_pick(a, draft_pool)
+	if card != null:
+		draft_pool.erase(card)
+		a.add_card(card)
+		log.append("%s toma %s en el draft." % [a.display_name, card.display_name])
+	return { "adalid": a, "card": card }
 
 
 ## Ejecuta picks de IA hasta que toque al humano o se acabe el draft.
 func _run_draft() -> void:
-	while not draft_order.is_empty():
-		var a: Adalid = draft_order[0]
-		if a == human:
+	while state == State.DRAFT:
+		var step := draft_step()
+		if step.is_empty() or step.has("human"):
 			return
-		draft_order.pop_front()
-		var card := ai_pick(a, draft_pool)
-		if card != null:
-			draft_pool.erase(card)
-			a.add_card(card)
-			log.append("%s toma %s en el draft." % [a.display_name, card.display_name])
+
+
+func _finish_draft() -> void:
 	deck.put_back(draft_pool)
 	draft_pool.clear()
 	_begin_market()
 
 
 func human_draft_pick(card: ChampionData) -> bool:
-	if state != State.DRAFT or draft_order.is_empty() or draft_order[0] != human or not draft_pool.has(card):
+	if state != State.DRAFT or draft_current() != human or not draft_pool.has(card):
 		return false
 	if not human.can_add(card):
 		return false
@@ -121,17 +145,28 @@ func human_draft_pick(card: ChampionData) -> bool:
 	draft_pool.erase(card)
 	human.add_card(card)
 	log.append("%s toma %s en el draft." % [human.display_name, card.display_name])
-	_run_draft()
+	return true
+
+
+## El humano pasa su turno de draft (no le cabe ninguna carta).
+func human_draft_skip() -> bool:
+	if state != State.DRAFT or draft_current() != human:
+		return false
+	draft_order.pop_front()
+	log.append("%s no toma carta en el draft." % human.display_name)
 	return true
 
 
 func _begin_market() -> void:
 	for a in alive_adalids():
-		var interest := a.interest()
-		var income := a.cycle_income()
-		a.add_eter(income)
-		log.append("%s cobra %d (10 + %d interés + %d racha), tiene %d." % [
-			a.display_name, income, interest, a.streak_bonus(), a.eter])
+		if cycle == 1:
+			log.append("%s empieza con %d de Éter (el primer ciclo no se cobra)." % [a.display_name, a.eter])
+		else:
+			var interest := a.interest()
+			var income := a.cycle_income()
+			a.add_eter(income)
+			log.append("%s cobra %d (10 + %d interés + %d racha), tiene %d." % [
+				a.display_name, income, interest, a.streak_bonus(), a.eter])
 		if a == human:
 			market = _draw_market(a)
 		else:

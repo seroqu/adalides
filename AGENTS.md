@@ -59,10 +59,12 @@ Decisiones del autor:
 - Movimiento 1 paso por asalto; alcance 1 salvo Arquero 3 y Mago 2.
 - Los tiers se cuentan con los campeones en batalla.
 - La marca "inactiva" del tablero físico no se implementa.
+- Las filas 1 de los dos tableros se enfrentan (confirmado el 2026-10-16).
+- En el primer ciclo no se cobra nada: se empieza con 30 de Éter.
 
 Supuestos del código:
 - El bono de racha es el número de la casilla (5, 10, …, 30 de Éter). Probablemente excesivo: preguntar.
-- Las filas 1 de los dos tableros se tocan; la cuadrícula 6×5 es transitable por ambos bandos.
+- La cuadrícula 6×5 es transitable por ambos bandos.
 - Mercado de 4 cartas; el draft lo empieza quien tiene menos vida; vender devuelve la mitad del coste.
 - Mazo: 4 copias de cada carta base y 1 de cada héroe. Los héroes no tienen elemento.
 - Los d20 de Tifón/Herejía/Magia desatada señalan casillas 1..15 (16–20 nada). Tormenta, Cosecha oscura,

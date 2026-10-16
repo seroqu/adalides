@@ -16,8 +16,17 @@ var log_label: RichTextLabel
 var phase_title: Label
 var hint: Label
 var panels: Dictionary = {}
-# Draft / mercado
-var draft_box: HFlowContainer
+# Draft
+var draft_table: DraftTable
+var draft_detail: VBoxContainer
+var take_button: Button
+var skip_button: Button
+var selected_draft: ChampionData = null
+var draft_busy: bool = false
+# Habilidades
+var skills_panel: PanelContainer
+var skills_box: VBoxContainer
+# Mercado
 var personal: Label
 var market_box: HFlowContainer
 var cuartel_box: HFlowContainer
@@ -55,10 +64,15 @@ func _build_world() -> void:
 	board3d = Board3D.new()
 	add_child(board3d)
 	board3d.tile_clicked.connect(_on_tile_clicked)
+	draft_table = DraftTable.new()
+	draft_table.deck_clicked.connect(_on_deck_clicked)
+	draft_table.card_clicked.connect(_on_draft_card_clicked)
+	draft_table.visible = false
+	add_child(draft_table)
 	camera = Camera3D.new()
 	var center := Vector3(Board3D.world_x(2), 0, (Board3D.world_z(0) + Board3D.world_z(5)) / 2.0)
 	camera.fov = 50
-	camera.h_offset = -0.45 # Centra el tablero entre los dos paneles.
+	camera.h_offset = -0.35 # Centra el tablero entre los dos paneles.
 	add_child(camera)
 	camera.look_at_from_position(center + Vector3(0, 9.2, -5.4), center + Vector3(0, 0, 0.2), Vector3.UP)
 
@@ -77,7 +91,7 @@ func _build_ui() -> void:
 	var left := PanelContainer.new()
 	left.add_theme_stylebox_override("panel", _panel_style())
 	left.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
-	left.offset_right = 380
+	left.offset_right = 340
 	left.offset_left = 8
 	left.offset_top = 8
 	left.offset_bottom = -8
@@ -114,16 +128,23 @@ func _build_ui() -> void:
 	var head := PanelContainer.new()
 	head.add_theme_stylebox_override("panel", _panel_style())
 	head.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	head.offset_left = 396
+	head.offset_left = 352
 	head.offset_right = -468
 	head.offset_top = 8
 	head.offset_bottom = 90
 	root.add_child(head)
 	var hv := VBoxContainer.new()
 	head.add_child(hv)
+	var hrow := HBoxContainer.new()
+	hv.add_child(hrow)
 	phase_title = Label.new()
 	phase_title.add_theme_font_size_override("font_size", 20)
-	hv.add_child(phase_title)
+	phase_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hrow.add_child(phase_title)
+	var skills_button := Button.new()
+	skills_button.text = "Habilidades"
+	skills_button.pressed.connect(_toggle_skills)
+	hrow.add_child(skills_button)
 	hint = _label("")
 	hv.add_child(hint)
 
@@ -145,6 +166,108 @@ func _build_ui() -> void:
 	for p in panels.values():
 		bottom.add_child(p)
 
+	# Consulta de habilidades: cubre el tablero.
+	skills_panel = PanelContainer.new()
+	skills_panel.add_theme_stylebox_override("panel", _panel_style())
+	skills_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	skills_panel.offset_left = 352
+	skills_panel.offset_right = -468
+	skills_panel.offset_top = 98
+	skills_panel.offset_bottom = -8
+	skills_panel.visible = false
+	root.add_child(skills_panel)
+	var sv := VBoxContainer.new()
+	skills_panel.add_child(sv)
+	var srow := HBoxContainer.new()
+	sv.add_child(srow)
+	var stitle := Label.new()
+	stitle.text = "Habilidades y lo que tienes"
+	stitle.add_theme_font_size_override("font_size", 18)
+	stitle.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	srow.add_child(stitle)
+	var close := Button.new()
+	close.text = "Cerrar"
+	close.pressed.connect(_toggle_skills)
+	srow.add_child(close)
+	skills_box = VBoxContainer.new()
+	skills_box.add_theme_constant_override("separation", 6)
+	var ssc := _scroll(skills_box)
+	ssc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	sv.add_child(ssc)
+	var opaque := _panel_style()
+	opaque.bg_color = Color(0.05, 0.05, 0.08, 0.97)
+	skills_panel.add_theme_stylebox_override("panel", opaque)
+
+
+func _toggle_skills() -> void:
+	skills_panel.visible = not skills_panel.visible
+	if skills_panel.visible:
+		_refresh_skills()
+
+
+## Para cada elemento y arquetipo: cuántos tienes en el cuartel y en la batalla, el tier y el texto.
+func _refresh_skills() -> void:
+	for c in skills_box.get_children():
+		c.queue_free()
+	var in_battle: Array[Champion] = []
+	if game.current_battle != null:
+		in_battle = game.current_battle.board.champions(0)
+	elif game.state == Game.State.LINEUP:
+		in_battle.assign(lineup.values())
+	else:
+		in_battle.assign(Game.auto_lineup(game.human).values())
+	var cu_e := Tiers.count_elements(game.human.cuartel)
+	var ba_e := Tiers.count_elements(in_battle)
+	var cu_a := Tiers.count_archetypes(game.human.cuartel)
+	var ba_a := Tiers.count_archetypes(in_battle)
+	skills_box.add_child(_section_title("Elementos — tiers con 3 / 6 / 9 campeones en batalla"))
+	for e in Catalog.ELEM_ORDER:
+		_add_skill_row(Icons.element(e), Icons.ELEMENT_COLORS[e], Rules.element_label(e),
+			cu_e.get(e, 0), ba_e.get(e, 0), Rules.ELEMENT_TIERS, TierTexts.ELEMENTS[e])
+	skills_box.add_child(_section_title("Arquetipos — tiers con 2 / 4 / 6 campeones en batalla"))
+	for a in Catalog.ARCH_ORDER:
+		_add_skill_row(Icons.archetype(a), Color.WHITE, Rules.archetype_label(a),
+			cu_a.get(a, 0), ba_a.get(a, 0), Rules.ARCHETYPE_TIERS, TierTexts.ARCHETYPES[a])
+
+
+func _section_title(text: String) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", 16)
+	l.modulate = Color(1, 0.9, 0.6)
+	return l
+
+
+func _add_skill_row(icon: Texture2D, color: Color, name: String, in_cuartel: int, in_battle: int,
+		thresholds: Array[int], text: String) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	var tr := TextureRect.new()
+	tr.texture = icon
+	tr.modulate = color
+	tr.custom_minimum_size = Vector2(40, 40)
+	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	tr.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	row.add_child(tr)
+	var v := VBoxContainer.new()
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(v)
+	var tier := Rules.tier_index(in_battle, thresholds)
+	var marks: PackedStringArray = []
+	for i in thresholds.size():
+		marks.append(("[%d]" if i < tier else " %d ") % thresholds[i])
+	var head := Label.new()
+	head.text = "%s — cuartel %d · en batalla %d · tier %s" % [name, in_cuartel, in_battle, "".join(marks)]
+	head.autowrap_mode = TextServer.AUTOWRAP_WORD
+	head.add_theme_font_size_override("font_size", 15)
+	head.modulate = Color(0.6, 1.0, 0.7) if tier > 0 else (Color.WHITE if in_cuartel > 0 else Color(0.6, 0.6, 0.6))
+	v.add_child(head)
+	var body := _label(text)
+	body.modulate = Color(0.85, 0.85, 0.9)
+	v.add_child(body)
+	skills_box.add_child(row)
+
 
 func _panel_style() -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
@@ -165,10 +288,22 @@ func _scroll(child: Control) -> ScrollContainer:
 
 func _build_draft_panel() -> Control:
 	var box := VBoxContainer.new()
-	draft_box = HFlowContainer.new()
-	draft_box.add_theme_constant_override("h_separation", 6)
-	draft_box.add_theme_constant_override("v_separation", 6)
-	box.add_child(_scroll(draft_box))
+	box.add_child(_label("Las cartas se reparten sobre el tablero. Pulsa una para verla y «Tomar carta» para quedártela."))
+	draft_detail = VBoxContainer.new()
+	draft_detail.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(draft_detail)
+	var row := HBoxContainer.new()
+	box.add_child(row)
+	take_button = Button.new()
+	take_button.text = "Tomar carta"
+	take_button.disabled = true
+	take_button.pressed.connect(_on_take_card)
+	row.add_child(take_button)
+	skip_button = Button.new()
+	skip_button.text = "Pasar (no me cabe ninguna)"
+	skip_button.visible = false
+	skip_button.pressed.connect(_on_skip_draft)
+	row.add_child(skip_button)
 	return box
 
 
@@ -318,6 +453,7 @@ func _new_game() -> void:
 	game = Game.new(NAMES, int(seed_spin.value))
 	game.set_human(0)
 	board3d.clear_pieces()
+	draft_table.clear()
 	_next_cycle()
 
 
@@ -328,10 +464,15 @@ func _next_cycle() -> void:
 
 func _enter_state() -> void:
 	board3d.highlight_tiles([])
+	if game.state != Game.State.DRAFT:
+		draft_table.clear()
+		draft_table.visible = false
 	match game.state:
 		Game.State.DRAFT:
-			_refresh_draft()
+			selected_draft = null
+			draft_table.set_deck_label("Mazo del demiurgo\n(pulsa para repartir)")
 			_preview_cuartel()
+			_refresh_draft()
 		Game.State.MARKET:
 			_refresh_market()
 			_preview_cuartel()
@@ -365,19 +506,92 @@ func _preview_cuartel() -> void:
 # ---------------------------------------------------------------- draft
 
 func _refresh_draft() -> void:
-	for c in draft_box.get_children():
+	draft_table.visible = true
+	var my_turn := game.draft_current() == game.human
+	if not draft_table.dealt:
+		hint.text = "Draft del ciclo %d: pulsa el mazo para repartir %d cartas. Cada adalid toma %d por turnos." % [
+			game.cycle, game.draft_pool.size(), Rules.DRAFT_PICKS]
+	elif draft_busy:
+		hint.text = "Repartiendo..."
+	elif my_turn:
+		hint.text = "Te toca: pulsa una carta del tablero y luego «Tomar carta»."
+	else:
+		hint.text = "Eligen los demás adalides..."
+	for c in draft_detail.get_children():
 		c.queue_free()
-	var my_turn := not game.draft_order.is_empty() and game.draft_order[0] == game.human
-	hint.text = "Draft: cada adalid toma %d cartas por turnos. %s" % [Rules.DRAFT_PICKS,
-		"Te toca: pulsa una carta." if my_turn else "Esperando..."]
+	var fits := false
 	for card in game.draft_pool:
+		if game.human.can_add(card):
+			fits = true
+			break
+	if selected_draft != null and game.draft_pool.has(selected_draft):
 		var cv := CardView.new()
-		cv.setup(card)
-		cv.disabled = not my_turn or not game.human.can_add(card)
-		cv.pressed.connect(func() -> void:
-			game.human_draft_pick(card)
-			_enter_state())
-		draft_box.add_child(cv)
+		cv.setup(selected_draft, null, "" if game.human.can_add(selected_draft) else "no cabe en tu cuartel")
+		cv.custom_minimum_size.x = 220
+		draft_detail.add_child(cv)
+		var power := _label(selected_draft.power.get("text", ""))
+		power.modulate = Color(0.85, 0.85, 0.95)
+		draft_detail.add_child(power)
+	take_button.disabled = not (my_turn and draft_table.dealt and not draft_busy and selected_draft != null
+		and game.human.can_add(selected_draft))
+	skip_button.visible = my_turn and draft_table.dealt and not draft_busy and not fits
+	if draft_table.dealt:
+		draft_table.dim_unavailable(func(card: ChampionData) -> bool: return game.human.can_add(card))
+	_refresh()
+
+
+func _on_deck_clicked() -> void:
+	if game.state != Game.State.DRAFT or draft_table.dealt or draft_busy:
+		return
+	draft_busy = true
+	draft_table.set_deck_label("Mazo del demiurgo")
+	_refresh_draft()
+	await draft_table.deal(game.draft_pool)
+	draft_busy = false
+	_draft_continue()
+
+
+## Deja elegir a las IA (con animación) hasta que toque al humano o termine el draft.
+func _draft_continue() -> void:
+	draft_busy = true
+	while game.state == Game.State.DRAFT and game.draft_current() != game.human:
+		var step := game.draft_step()
+		if step.has("card") and step["card"] != null:
+			hint.text = "%s toma %s." % [step["adalid"].display_name, step["card"].display_name]
+			_refresh()
+			await draft_table.take(step["card"], false)
+	draft_busy = false
+	if game.state == Game.State.DRAFT:
+		_refresh_draft()
+	else:
+		draft_table.clear()
+		draft_table.visible = false
+		_enter_state()
+
+
+func _on_draft_card_clicked(card: ChampionData) -> void:
+	if game.state != Game.State.DRAFT or draft_busy:
+		return
+	selected_draft = card
+	draft_table.select(card)
+	_refresh_draft()
+
+
+func _on_take_card() -> void:
+	if selected_draft == null or not game.human_draft_pick(selected_draft):
+		return
+	var card := selected_draft
+	selected_draft = null
+	draft_busy = true
+	_refresh_draft()
+	await draft_table.take(card, true)
+	_preview_cuartel()
+	_draft_continue()
+
+
+func _on_skip_draft() -> void:
+	if game.human_draft_skip():
+		_draft_continue()
 
 
 # ---------------------------------------------------------------- mercado
@@ -601,18 +815,28 @@ func _refresh() -> void:
 # ---------------------------------------------------------------- capturas
 
 func _screenshot_tour(dir: String) -> void:
+	await _snap(dir.path_join("1_draft_mazo.png"))
+	await _on_deck_clicked()
+	while draft_busy:
+		await get_tree().process_frame
 	await _snap(dir.path_join("1_draft.png"))
 	while game.state == Game.State.DRAFT:
-		var picked := false
-		for card in game.draft_pool:
-			if game.human.can_add(card):
-				game.human_draft_pick(card)
-				picked = true
-				break
-		if not picked:
-			game.draft_order.pop_front()
-			game._run_draft()
-		_enter_state()
+		if game.draft_current() == game.human:
+			var pick: ChampionData = null
+			for card in game.draft_pool:
+				if game.human.can_add(card):
+					pick = card
+					break
+			if pick == null:
+				await _on_skip_draft()
+			else:
+				_on_draft_card_clicked(pick)
+				await _on_take_card()
+		while draft_busy:
+			await get_tree().process_frame
+	_toggle_skills()
+	await _snap(dir.path_join("2_habilidades.png"))
+	_toggle_skills()
 	await _snap(dir.path_join("2_mercado.png"))
 	if game.state == Game.State.MARKET:
 		if not game.market.is_empty():

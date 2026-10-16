@@ -45,8 +45,10 @@ func _ready() -> void:
 	add_child(bar)
 
 
+## La cámara mira hacia +Z, así que +X queda a la izquierda en pantalla;
+## se invierte para que la columna 0 se vea a la izquierda.
 static func world_x(x: int) -> float:
-	return x * TILE
+	return -x * TILE
 
 
 static func world_z(y: int) -> float:

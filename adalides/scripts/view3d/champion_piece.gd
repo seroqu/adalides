@@ -62,7 +62,7 @@ func setup(ch: Champion, p_side: int) -> void:
 	_label.pixel_size = 0.0036
 	_label.font_size = 46
 	_label.outline_size = 12
-	_label.position.y = 1.2
+	_label.position.y = 1.3
 	_label.no_depth_test = true
 	add_child(_label)
 	refresh()
