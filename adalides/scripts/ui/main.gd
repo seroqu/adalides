@@ -118,6 +118,7 @@ func _build_world() -> void:
 	camera.v_offset = -0.75 # El tablero sube para dejar sitio a la mano de cartas.
 	add_child(camera)
 	_camera_view(View.BOARD, false)
+	ChampionPiece.warm_up.call_deferred(board3d)
 
 
 enum View { BOARD, DRAFT, MARKET, LINEUP }
@@ -1085,11 +1086,12 @@ func _enter_state() -> void:
 			lineup = Game.auto_lineup(game.human)
 			pending_card = null
 			_start_phase_timer(LINEUP_SECONDS)
+			_refresh_hand()
 			_refresh_lineup()
 		Game.State.BATTLE:
 			battle_paused = false
-			_refresh_battle()
-			_start_battle_loop()
+			board3d.drop_hidden()
+			_battle_intro()
 		Game.State.CYCLE_END:
 			if not game.last_battles.is_empty():
 				board3d.sync(game.last_battles[-1].board.cells, false)
@@ -1307,6 +1309,20 @@ func _refresh_hand() -> void:
 		hand_box.add_theme_constant_override("separation", int(pitch - HAND_CARD_W))
 
 
+## En la alineación la mano no se reconstruye: solo cambian la marca y el texto.
+func _mark_hand() -> void:
+	if hand_box.get_child_count() != game.human.cuartel.size():
+		_refresh_hand()
+		return
+	for cv in hand_box.get_children():
+		var c := cv as CardView
+		if c == null or c.champion == null:
+			_refresh_hand()
+			return
+		c.selected = c.champion == pending_card
+		c.set_extra("en el tablero ✔" if lineup.values().has(c.champion) else "en la mano")
+
+
 ## La carta crece desde su borde inferior (pivote abajo); nunca se mueve su
 ## posición, así un hover/unhover desparejado no la desplaza.
 func _on_hand_hover(cv: CardView) -> void:
@@ -1397,8 +1413,8 @@ func _place_in_lineup(ch: Champion, key: Vector2i) -> void:
 
 func _refresh_lineup() -> void:
 	hint.text = "Coloca hasta %d campeones en tu lado del tablero." % game.human.battle_size()
-	_refresh_hand()
-	board3d.sync(Board3D.lineup_to_cells(lineup, 0), false)
+	_mark_hand()
+	board3d.sync(Board3D.lineup_to_cells(lineup, 0), false, true, true)
 	var free: Array[Vector2i] = []
 	if pending_card != null:
 		for row in range(1, Rules.BOARD_ROWS + 1):
@@ -1451,6 +1467,16 @@ func _input(event: InputEvent) -> void:
 				(drag["card3d"] as Card3D).begin_drag()
 		if drag_active:
 			drag_preview.position = pos + Vector2(14, 14)
+			if drag["kind"] in ["cuartel_card", "piece"]:
+				var tile := _tile_under_mouse(pos)
+				board3d.hover_tile(tile if tile.x >= 0 and Board.side_of(tile) == 0 else Vector2i(-1, -1))
+				if drag["kind"] == "piece":
+					var piece := board3d.piece_of(drag["champion"])
+					if piece != null:
+						var from := camera.project_ray_origin(pos)
+						var hit = Plane(Vector3.UP, 0.9).intersects_ray(from, camera.project_ray_normal(pos))
+						if hit != null:
+							piece.position = piece.position.lerp(hit, 0.5)
 			if drag["kind"] == "table_card":
 				var over := _over_drop_zone(pos)
 				right_panel.modulate = Color(1.2, 1.15, 1.0) if over else Color.WHITE
@@ -1473,6 +1499,7 @@ func _end_drag(pos: Vector2) -> void:
 	drag_active = false
 	drag_preview.visible = false
 	right_panel.modulate = Color.WHITE
+	board3d.hover_tile(Vector2i(-1, -1))
 	match data.get("kind", ""):
 		"cuartel_card":
 			if not active:
@@ -1487,11 +1514,14 @@ func _end_drag(pos: Vector2) -> void:
 			var ch: Champion = data["champion"]
 			if tile.x >= 0 and Board.side_of(tile) == 0:
 				_place_in_lineup(ch, Vector2i(tile.x, Board.row_of(tile)))
-			else:
+			elif active:
 				for k in lineup.keys():
 					if lineup[k] == ch:
 						lineup.erase(k)
 			_refresh_lineup()
+			var moved := board3d.piece_of(ch)
+			if moved != null and moved.visible:
+				moved.spawn_in()
 		"table_card":
 			if drop_zone != null and game.state == Game.State.DRAFT:
 				_style_drop_zone(false)
@@ -1525,6 +1555,31 @@ func _tile_under_mouse(pos: Vector2) -> Vector2i:
 
 
 # ---------------------------------------------------------------- batalla
+
+## Arranque de la batalla: aparece el rival, cartel, tus campeones se giran y empieza.
+func _battle_intro() -> void:
+	var battle := game.current_battle
+	if battle == null:
+		_refresh_battle()
+		_start_battle_loop()
+		return
+	battle_playing = true
+	_refresh_battle()
+	board3d.sync(battle.board.cells, true, true)
+	await get_tree().create_timer(0.7, false).timeout
+	_celebrate("Batalla contra %s" % battle.adalids[1].display_name, GameTheme.GOLD, false)
+	await get_tree().create_timer(0.8, false).timeout
+	for ch in board3d.pieces:
+		var piece: ChampionPiece = board3d.pieces[ch]
+		piece.set_facing_camera(false, true)
+		Fx.dust_puff(board3d, piece.position, Vector3.FORWARD)
+	await get_tree().create_timer(0.6, false).timeout
+	_celebrate("¡A luchar!", Color(1, 0.5, 0.4), true)
+	await get_tree().create_timer(0.5, false).timeout
+	battle_playing = false
+	if game.state == Game.State.BATTLE and game.current_battle == battle:
+		_start_battle_loop()
+
 
 func _start_battle_loop() -> void:
 	_auto_token += 1
@@ -1882,6 +1937,11 @@ func _screenshot_tour(dir: String) -> void:
 		_on_lineup_done(false)
 	if game.state == Game.State.BATTLE:
 		_toggle_pause()
+		for i in 10:
+			await get_tree().create_timer(0.3, false).timeout
+			await _snap(dir.path_join("4_intro_%02d.png" % i))
+		while battle_playing:
+			await get_tree().process_frame
 		await _snap(dir.path_join("4_batalla.png"))
 		_step_round()
 		for i in 14:

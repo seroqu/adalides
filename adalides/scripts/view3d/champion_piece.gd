@@ -147,6 +147,45 @@ func cheer() -> void:
 		tw.tween_property(self, "position:y", position.y, 0.25).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
 
 
+var facing_camera: bool = false
+
+
+## Mira al jugador (alineación) o al rival (batalla); con `animate`, gira en medio segundo.
+func set_facing_camera(v: bool, animate: bool) -> void:
+	facing_camera = v
+	var target_y := 0.0 if side == 0 else 180.0
+	if v and side == 0:
+		target_y = 180.0 # El rival ya mira hacia la cámara por defecto.
+	var body: Node3D = _model if _model != null else null
+	if body == null:
+		return
+	if animate:
+		var tw := create_tween()
+		tw.tween_property(body, "rotation_degrees:y", target_y, 0.5).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	else:
+		body.rotation_degrees.y = target_y
+
+
+## Aparece creciendo desde el suelo con un pequeño rebote.
+func spawn_in() -> void:
+	scale = Vector3(0.05, 0.05, 0.05)
+	var tw := create_tween()
+	tw.tween_property(self, "scale", Vector3.ONE, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+## Carga cada modelo una vez al arrancar para que no haya tirones al colocar fichas.
+static func warm_up(parent: Node3D) -> void:
+	for arch in Catalog.ARCH_ORDER:
+		var path := "res://assets/models/%s.glb" % Icons.ARCHETYPE_FILES[arch]
+		if not ResourceLoader.exists(path):
+			continue
+		var scene: PackedScene = load(path)
+		var inst := scene.instantiate()
+		inst.position = Vector3(0, -50, 0)
+		parent.add_child(inst)
+		parent.get_tree().create_timer(1.0).timeout.connect(inst.queue_free)
+
+
 func has_model() -> bool:
 	return _model != null
 

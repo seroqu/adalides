@@ -46,6 +46,7 @@ del juego (README v1: sinergias 3/5/7, DA+DP, estertores) quedó obsoleta el 202
     │   └── view3d/              Tablero, fichas con modelos GLB, cartas 3D (card_3d.gd), mesa del draft,
     │                            efectos (fx.gd) y decorado compartido (deco.gd: sellos, braseros, motas)
     ├── assets/particles/        Sprites de partículas del Particle Pack de Kenney (CC0); Fx.tex("nombre")
+    ├── assets/shaders/          tile.gdshader (casillas: borde, vetas, highlight/hover) y table.gdshader (mesa)
     ├── assets/icons/            SVG de arquetipos y elementos (game-icons.net, CC BY; ver CREDITS.md), marco, dorso y sello
     ├── assets/models/           GLB por arquetipo generados con tools/build_champions.py (Blender)
     └── tools/build_champions.py Construye y anima los diez modelos en Blender (clips idle, walk,

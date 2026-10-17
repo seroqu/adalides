@@ -98,11 +98,19 @@ func setup(p_card: ChampionData, p_champion: Champion = null, extra := "") -> vo
 	v.add_child(power)
 	if extra != "":
 		var ex := Label.new()
+		ex.name = "Extra"
 		ex.text = extra
 		ex.add_theme_color_override("font_color", Color(0.8, 0.8, 0.85))
 		ex.add_theme_font_size_override("font_size", 12)
 		ex.autowrap_mode = TextServer.AUTOWRAP_WORD
 		v.add_child(ex)
+
+
+## Cambia el texto pequeño de abajo sin reconstruir la carta.
+func set_extra(text: String) -> void:
+	var ex: Label = find_child("Extra", true, false)
+	if ex != null:
+		ex.text = text
 
 
 func _apply_style() -> void:

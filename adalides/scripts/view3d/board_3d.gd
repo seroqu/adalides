@@ -67,9 +67,8 @@ func _ready() -> void:
 	var tm := BoxMesh.new()
 	tm.size = Vector3(Rules.BOARD_COLS * TILE + 5.6, 0.2, 2 * Rules.BOARD_ROWS * TILE + 3.2)
 	table.mesh = tm
-	var tmat := StandardMaterial3D.new()
-	tmat.albedo_color = Color(0.16, 0.1, 0.08)
-	tmat.roughness = 0.9
+	var tmat := ShaderMaterial.new()
+	tmat.shader = preload("res://assets/shaders/table.gdshader")
 	table.material_override = tmat
 	table.position = Vector3(world_x(2), -0.16, (world_z(0) + world_z(5)) / 2.0)
 	add_child(table)
@@ -112,6 +111,9 @@ static func world_pos(pos: Vector2i) -> Vector3:
 	return Vector3(world_x(pos.x), 0, world_z(pos.y))
 
 
+static var _tile_shader: Shader = preload("res://assets/shaders/tile.gdshader")
+
+
 func _make_tile(pos: Vector2i) -> void:
 	var body := StaticBody3D.new()
 	body.position = world_pos(pos)
@@ -120,11 +122,22 @@ func _make_tile(pos: Vector2i) -> void:
 	box.size = Vector3(TILE, 0.2, TILE)
 	shape.shape = box
 	body.add_child(shape)
-	var mesh := MeshInstance3D.new()
+	# Base oscura y, encima, la cara con el shader.
+	var base := MeshInstance3D.new()
 	var bm := BoxMesh.new()
-	bm.size = Vector3(TILE - 0.08, 0.1, TILE - 0.08)
-	mesh.mesh = bm
-	mesh.material_override = _tile_material(pos, false)
+	bm.size = Vector3(TILE - 0.06, 0.1, TILE - 0.06)
+	base.mesh = bm
+	var bmat := StandardMaterial3D.new()
+	bmat.albedo_color = Color(0.05, 0.05, 0.08)
+	bmat.roughness = 0.8
+	base.material_override = bmat
+	body.add_child(base)
+	var mesh := MeshInstance3D.new()
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(TILE - 0.06, TILE - 0.06)
+	mesh.mesh = pm
+	mesh.position.y = 0.051
+	mesh.material_override = _tile_material(pos)
 	body.add_child(mesh)
 	body.input_event.connect(func(_cam: Node, event: InputEvent, _p: Vector3, _n: Vector3, _i: int) -> void:
 		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
@@ -132,43 +145,47 @@ func _make_tile(pos: Vector2i) -> void:
 	_side_roots[Board.side_of(pos)].add_child(body)
 	tiles[pos] = mesh
 	bodies[body] = pos
-	# Borde fino emisivo en el color del bando.
-	var edge := MeshInstance3D.new()
-	var em := BoxMesh.new()
-	em.size = Vector3(TILE - 0.02, 0.06, TILE - 0.02)
-	edge.mesh = em
-	var emat := StandardMaterial3D.new()
-	var side := Board.side_of(pos)
-	var c := Color(0.35, 0.6, 1.0) if side == 0 else Color(1.0, 0.4, 0.4)
-	emat.albedo_color = c.darkened(0.5)
-	emat.emission_enabled = true
-	emat.emission = c * 0.35
-	edge.material_override = emat
-	edge.position.y = -0.03
-	body.add_child(edge)
 
 
-func _tile_material(pos: Vector2i, highlight: bool) -> StandardMaterial3D:
-	var mat := StandardMaterial3D.new()
+func _tile_material(pos: Vector2i) -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = _tile_shader
 	var side := Board.side_of(pos)
 	var front := Board.row_of(pos) == 1
-	var base := Color(0.16, 0.22, 0.36) if side == 0 else Color(0.36, 0.16, 0.18)
+	var base := Color(0.14, 0.2, 0.36) if side == 0 else Color(0.36, 0.13, 0.16)
 	if front:
-		base = base.lightened(0.15)
-	if highlight:
-		base = Color(0.3, 0.7, 0.4)
-		mat.emission_enabled = true
-		mat.emission = base * 0.5
-	mat.albedo_color = base
+		base = base.lightened(0.18)
+	mat.set_shader_parameter("base_color", base)
+	mat.set_shader_parameter("edge_color", Color(0.35, 0.6, 1.0) if side == 0 else Color(1.0, 0.4, 0.4))
+	mat.set_shader_parameter("seed", float(pos.x * 7 + pos.y * 13) * 0.37)
 	return mat
+
+
+func _set_tile_param(pos: Vector2i, param: String, value: float) -> void:
+	if tiles.has(pos):
+		(tiles[pos].material_override as ShaderMaterial).set_shader_parameter(param, value)
 
 
 func highlight_tiles(positions: Array[Vector2i]) -> void:
 	for pos in highlighted:
-		tiles[pos].material_override = _tile_material(pos, false)
+		_set_tile_param(pos, "highlight", 0.0)
 	highlighted = positions.duplicate()
 	for pos in highlighted:
-		tiles[pos].material_override = _tile_material(pos, true)
+		_set_tile_param(pos, "highlight", 1.0)
+
+
+var hovered := Vector2i(-1, -1)
+
+
+## Casilla bajo el cursor durante un arrastre (dorada); (-1, -1) la quita.
+func hover_tile(pos: Vector2i) -> void:
+	if pos == hovered:
+		return
+	if hovered.x >= 0:
+		_set_tile_param(hovered, "hover", 0.0)
+	hovered = pos
+	if hovered.x >= 0:
+		_set_tile_param(hovered, "hover", 1.0)
 
 
 func set_mat_visible(v: bool) -> void:
@@ -231,29 +248,42 @@ func clear_pieces() -> void:
 
 
 ## Sincroniza las fichas con un diccionario { Vector2i(x, y) grid : Champion }.
-func sync(cells: Dictionary, animate := true) -> void:
-	var keep := {}
+## `facing_camera`: las fichas miran al jugador (alineación). `keep`: las que
+## sobran se ocultan en vez de borrarse (así recolocar no vuelve a cargar modelos).
+func sync(cells: Dictionary, animate := true, facing_camera := false, keep := false) -> void:
+	var present := {}
 	for pos in cells:
 		var ch: Champion = cells[pos]
-		keep[ch] = true
+		present[ch] = true
 		var target := world_pos(pos)
 		if pieces.has(ch):
 			var piece: ChampionPiece = pieces[ch]
 			piece.refresh()
-			if animate and piece.position.distance_to(target) > 0.01:
+			var was_hidden := not piece.visible
+			piece.visible = true
+			if animate and not was_hidden and piece.position.distance_to(target) > 0.01:
 				var tw := create_tween()
 				tw.tween_property(piece, "position", target, 0.35).set_trans(Tween.TRANS_SINE)
-			elif not animate:
+			elif not animate or was_hidden:
 				piece.position = target
+				if was_hidden:
+					piece.spawn_in()
+			piece.set_facing_camera(facing_camera, animate)
 		else:
 			var piece := ChampionPiece.new()
 			piece.position = target
 			add_child(piece)
 			piece.setup(ch, ch.side if ch.side >= 0 else Board.side_of(pos))
+			piece.set_facing_camera(facing_camera, false)
+			if animate:
+				piece.spawn_in()
 			pieces[ch] = piece
 	for ch in pieces.keys():
-		if not keep.has(ch):
+		if not present.has(ch):
 			var piece: ChampionPiece = pieces[ch]
+			if keep:
+				piece.visible = false
+				continue
 			pieces.erase(ch)
 			if animate:
 				var tw := create_tween()
@@ -261,6 +291,15 @@ func sync(cells: Dictionary, animate := true) -> void:
 				tw.tween_callback(piece.queue_free)
 			else:
 				piece.queue_free()
+
+
+## Quita las fichas ocultas que dejó `sync(..., keep = true)`.
+func drop_hidden() -> void:
+	for ch in pieces.keys():
+		var piece: ChampionPiece = pieces[ch]
+		if not piece.visible:
+			pieces.erase(ch)
+			piece.queue_free()
 
 
 ## Convierte una alineación { Vector2i(col, fila): Champion } del lado `side` a celdas de cuadrícula.
