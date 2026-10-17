@@ -143,6 +143,12 @@ lee `Battle.events` (move / attack / damage / heal / power / tier / dodge / free
 - Capturas de cada fase (abre una ventana real unos segundos):
   `godot --path adalides --resolution 1500x950 -- --screenshots /ruta/de/salida`
 - Recorrido automático del tutorial con capturas: `godot --path adalides -- --tutorial /ruta/de/salida`
+- Exportar (plantillas en `~/.local/share/godot/export_templates/4.7.2.stable/`, instaladas desde el .tpz oficial):
+  `godot --headless --path adalides --export-release Linux ../build/adalides.x86_64`,
+  `--export-release Web ../build/web/index.html` (sin hilos: no necesita cabeceras COOP/COEP, pero sí un
+  servidor http), `--export-release macOS ../build/mac/Adalides_del_demiurgo.zip` (universal, firma ad hoc
+  integrada; requiere `import_etc2_astc=true` en project.godot) y `--export-release Windows
+  ../build/windows/Adalides_del_demiurgo.exe`. Las rutas de exportación no admiten espacios.
 - Editor: `godot -e --path adalides`
 - Rama principal: `master`. Commits en español, en presente ("Agrega la escena de combate").
 - No subir `adalides/.godot/` ni exportaciones; ya están en `.gitignore`.
