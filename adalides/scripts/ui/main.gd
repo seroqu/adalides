@@ -1696,41 +1696,79 @@ func _animate_events(battle: Battle, evs: Array) -> void:
 			"heal":
 				if piece != null:
 					piece.show_hp(e["hp"])
-					Fx.float_text(board3d, piece.position, "+%d" % e["amount"], Color(0.5, 1, 0.5))
-					Fx.burst(board3d, piece.position + Vector3(0, 0.5, 0), Color(0.5, 1, 0.5), 16, 0.05)
-					await get_tree().create_timer(0.2, false).timeout
+					var green := Color(0.5, 1, 0.55)
+					Fx.pillar(board3d, piece.position, green, 2.0, 0.7, 0.8)
+					Fx.swirl(board3d, piece.position, green, -1, 26, 0.8)
+					Fx.glyph_floor(board3d, piece.position, green, 1.2, 0.8)
+					piece.tint(Color(0.3, 0.7, 0.35), 0.9)
+					Fx.float_text(board3d, piece.position, "+%d" % e["amount"], green)
+					await get_tree().create_timer(0.35, false).timeout
 			"power":
 				if piece != null:
-					var color: Color = Icons.ELEMENT_COLORS.get(e.get("element", -1), GameTheme.GOLD)
-					Fx.ring(board3d, piece.position, color, 1.0)
-					Fx.burst(board3d, piece.position + Vector3(0, 0.6, 0), color, 36, 0.07)
-					Fx.float_text(board3d, piece.position + Vector3(0, 0.4, 0), e["name"], Color(1, 0.9, 0.6), 48)
-					await get_tree().create_timer(0.45, false).timeout
+					var elem: int = e.get("element", -1)
+					var color: Color = Icons.ELEMENT_COLORS.get(elem, GameTheme.GOLD)
+					var icon: Texture2D = Icons.element(elem) if elem >= 0 else Icons.archetype(e.get("archetype", 0))
+					piece.pulse()
+					piece.tint(color, 1.0)
+					Fx.glyph_floor(board3d, piece.position, color, 1.7, 1.0)
+					Fx.pillar(board3d, piece.position, color, 2.6, 0.9, 0.9)
+					Fx.swirl(board3d, piece.position, color, elem, 40, 0.9)
+					Fx.icon_rise(board3d, piece.position, icon, color, 0.0022, 1.2, 1.0)
+					Fx.float_text(board3d, piece.position + Vector3(0, 1.0, 0), e["name"], Color(1, 0.92, 0.65), 54)
+					_camera_shake(0.015)
+					await get_tree().create_timer(0.55, false).timeout
 			"tier":
-				var color: Color = Icons.ELEMENT_COLORS.get(e.get("element", -1), GameTheme.GOLD)
+				var elem: int = e.get("element", -1)
+				var arch: int = e.get("archetype", -1)
+				var color: Color = Icons.ELEMENT_COLORS.get(elem, GameTheme.GOLD)
+				var icon: Texture2D = Icons.element(elem) if elem >= 0 else Icons.archetype(arch if arch >= 0 else 0)
 				var side: int = e["side"]
 				var center := Vector3(Board3D.world_x(2), 0, Board3D.world_z(1) if side == 0 else Board3D.world_z(4))
-				Fx.ring(board3d, center, color, 3.0)
+				Fx.shockwave(board3d, center, color, 4.5, 0.8)
+				Fx.glyph_floor(board3d, center, color, 6.0, 1.4)
+				Fx.icon_rise(board3d, center, icon, color, 0.0045, 1.8, 1.4)
+				if elem >= 0:
+					Fx.rain(board3d, center, Vector3(2.8, 0.1, 1.6), color, elem, 90)
+				# Cada campeón del bando que forma parte del tier se ilumina.
+				var i := 0
+				for ch2 in board3d.pieces:
+					var p2: ChampionPiece = board3d.pieces[ch2]
+					if ch2.side != side or not p2.visible:
+						continue
+					var member: bool = (elem >= 0 and ch2.data.element == elem) or (arch >= 0 and ch2.data.has_archetype(arch))
+					if member:
+						Fx.pillar(board3d, p2.position, color, 2.2, 0.7, 1.0)
+						p2.tint(color, 1.2)
+						p2.pulse(1.15)
+						i += 1
 				if piece != null:
-					Fx.burst(board3d, piece.position + Vector3(0, 0.6, 0), color, 30, 0.07)
+					Fx.impact(board3d, piece.position, color, elem, Vector3.UP, 1.0)
 				_tier_banner(side, e["name"], color)
 				_screen_flash(color)
-				await get_tree().create_timer(0.6, false).timeout
+				_camera_shake(0.05)
+				await get_tree().create_timer(0.9, false).timeout
 			"dodge":
 				if piece != null:
-					Fx.float_text(board3d, piece.position, "¡esquiva!", Color(0.7, 0.95, 1), 44)
-					await get_tree().create_timer(0.18, false).timeout
+					var cyan := Color(0.7, 0.95, 1)
+					Fx.afterimage(board3d, piece.position, cyan)
+					piece.sidestep()
+					Fx.float_text(board3d, piece.position, "¡esquiva!", cyan, 44)
+					await get_tree().create_timer(0.3, false).timeout
 			"freeze":
 				if piece != null:
 					piece.refresh()
+					piece.tint(Color(0.45, 0.75, 1.0), 2.0)
 					piece.flash(Color(0.6, 0.85, 1))
+					Fx.frost(board3d, piece.position)
 					Fx.float_text(board3d, piece.position, "❄ congelado", Color(0.6, 0.85, 1), 44)
-					await get_tree().create_timer(0.18, false).timeout
+					await get_tree().create_timer(0.35, false).timeout
 			"curse":
 				if piece != null:
 					piece.refresh()
+					piece.tint(Color(0.5, 0.15, 0.7), 2.0)
+					Fx.curse(board3d, piece.position)
 					Fx.float_text(board3d, piece.position, "☠ maldito", Color(0.8, 0.5, 1), 44)
-					await get_tree().create_timer(0.18, false).timeout
+					await get_tree().create_timer(0.35, false).timeout
 			"death":
 				if piece != null:
 					piece.play_clip("death")
@@ -1943,6 +1981,30 @@ func _screenshot_tour(dir: String) -> void:
 		while battle_playing:
 			await get_tree().process_frame
 		await _snap(dir.path_join("4_batalla.png"))
+		# Demo de efectos: eventos simulados sobre fichas reales (no cambian el estado).
+		var battle := game.current_battle
+		var mine: Array[Champion] = battle.board.champions(0)
+		var theirs: Array[Champion] = battle.board.champions(1)
+		if not mine.is_empty() and not theirs.is_empty():
+			var demo_evs: Array = [
+				{ "type": "power", "ch": mine[0], "name": "Poder de prueba", "element": mine[0].data.element, "archetype": mine[0].data.archetype },
+				{ "type": "tier", "side": 0, "name": "Tier de prueba", "element": mine[0].data.element if mine[0].data.element >= 0 else Rules.Element.FUEGO },
+				{ "type": "heal", "ch": mine[0], "amount": 2, "hp": mine[0].hp },
+				{ "type": "freeze", "ch": theirs[0] },
+				{ "type": "curse", "ch": theirs[-1] },
+				{ "type": "dodge", "ch": mine[-1] },
+			]
+			var k := 0
+			for de in demo_evs:
+				battle_playing = true
+				var one: Array = [de]
+				_animate_events.call_deferred(battle, one)
+				for j in 3:
+					await get_tree().create_timer(0.18, false).timeout
+					await _snap(dir.path_join("4_fx_%s_%d.png" % [de["type"], j]))
+				await get_tree().create_timer(0.6, false).timeout
+				battle_playing = false
+				k += 1
 		_step_round()
 		for i in 14:
 			await get_tree().create_timer(0.12, false).timeout

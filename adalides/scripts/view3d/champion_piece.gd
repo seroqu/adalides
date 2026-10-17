@@ -148,6 +148,50 @@ func cheer() -> void:
 
 
 var facing_camera: bool = false
+var _tint_tw: Tween
+
+
+## Tinte temporal del modelo (escarcha, maldición…): emisión de color que se apaga sola.
+func tint(color: Color, duration := 1.2) -> void:
+	if _model == null:
+		return
+	if _tint_tw != null and _tint_tw.is_valid():
+		_tint_tw.kill()
+	var mats: Array[BaseMaterial3D] = []
+	for mi in _model.find_children("*", "MeshInstance3D", true, false):
+		for i in (mi.mesh.get_surface_count() if mi.mesh != null else 0):
+			var m: Material = mi.get_surface_override_material(i)
+			if m is BaseMaterial3D:
+				mats.append(m)
+	for m in mats:
+		m.emission = color
+		m.emission_energy_multiplier = 1.6
+	_tint_tw = create_tween()
+	_tint_tw.tween_interval(duration * 0.5)
+	_tint_tw.tween_method(func(t: float) -> void:
+		for m in mats:
+			m.emission = color.lerp(Color(0.18, 0.18, 0.2), t)
+			m.emission_energy_multiplier = lerpf(1.6, 0.9, t), 0.0, 1.0, duration * 0.5)
+
+
+## Pulso de escala al activar un poder.
+func pulse(amount := 1.22) -> void:
+	var body: Node3D = _model if _model != null else _arch
+	if body == null:
+		return
+	var base := body.scale
+	var tw := create_tween()
+	tw.tween_property(body, "scale", base * amount, 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(body, "scale", base, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+## Esquiva: salto lateral rápido y vuelta.
+func sidestep() -> void:
+	var origin := position
+	var tw := create_tween()
+	tw.tween_property(self, "position", origin + Vector3(0.45, 0.1, 0), 0.09).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_interval(0.08)
+	tw.tween_property(self, "position", origin, 0.16).set_trans(Tween.TRANS_SINE)
 
 
 ## Mira al jugador (alineación) o al rival (batalla); con `animate`, gira en medio segundo.

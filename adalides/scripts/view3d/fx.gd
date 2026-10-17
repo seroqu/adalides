@@ -404,3 +404,279 @@ static func projectile(parent: Node3D, from: Vector3, to: Vector3, color: Color,
 	glow.visible = false
 	trail.emitting = false
 	parent.get_tree().create_timer(0.5).timeout.connect(node.queue_free)
+
+
+# ---------------------------------------------------------------- poderes y tiers
+
+## Pilar de luz vertical que crece desde el suelo y se desvanece: dos haces
+## cruzados con el resplandor radial estirado, más un núcleo fino.
+static func pillar(parent: Node3D, pos: Vector3, color: Color, height := 2.6, width := 0.9, duration := 0.9) -> void:
+	var root := Node3D.new()
+	root.position = pos
+	parent.add_child(root)
+	var mats: Array[StandardMaterial3D] = []
+	for layer in [[width, color, 0.55], [width * 0.35, color.lightened(0.6), 0.9]]:
+		var m := MeshInstance3D.new()
+		var q := QuadMesh.new()
+		q.size = Vector2(1, 1)
+		q.center_offset = Vector3(0, 0.42, 0)
+		m.mesh = q
+		var mat := sprite_material("light_01", layer[1], true, false)
+		mat.vertex_color_use_as_albedo = false
+		mat.albedo_color.a = layer[2]
+		mat.billboard_mode = BaseMaterial3D.BILLBOARD_FIXED_Y
+		mat.billboard_keep_scale = true
+		mat.no_depth_test = false
+		m.material_override = mat
+		m.scale = Vector3(0.1, 0.2, 1)
+		root.add_child(m)
+		mats.append(mat)
+		var tw := parent.create_tween()
+		tw.set_parallel(true)
+		tw.tween_property(m, "scale", Vector3(layer[0], height, 1), duration * 0.3).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.chain().tween_property(m, "scale", Vector3(layer[0] * 0.3, height * 1.2, 1), duration * 0.7).set_trans(Tween.TRANS_SINE)
+		tw.parallel().tween_property(mat, "albedo_color:a", 0.0, duration * 0.7)
+	# Motas que ascienden por el haz.
+	var motes := sprite_particles("star_05", color.lightened(0.3), 18, duration, 0.08, 0.16)
+	motes.one_shot = true
+	motes.explosiveness = 0.5
+	motes.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	motes.emission_sphere_radius = width * 0.3
+	motes.direction = Vector3.UP
+	motes.spread = 8
+	motes.initial_velocity_min = height * 1.2
+	motes.initial_velocity_max = height * 2.0
+	motes.gravity = Vector3.ZERO
+	root.add_child(motes)
+	motes.emitting = true
+	parent.get_tree().create_timer(duration + 0.5).timeout.connect(root.queue_free)
+
+
+## Glifo mágico en el suelo que gira, crece y se apaga.
+static func glyph_floor(parent: Node3D, pos: Vector3, color: Color, size := 1.6, duration := 1.0, name := "magic_03") -> void:
+	var m := MeshInstance3D.new()
+	var q := QuadMesh.new()
+	q.size = Vector2.ONE
+	m.mesh = q
+	var mat := sprite_material(name, color, true, false)
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_DISABLED
+	mat.vertex_color_use_as_albedo = false
+	m.material_override = mat
+	m.position = pos + Vector3(0, 0.07, 0)
+	m.rotation_degrees = Vector3(-90, 0, 0)
+	m.scale = Vector3.ONE * 0.2
+	parent.add_child(m)
+	var tw := parent.create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(m, "scale", Vector3.ONE * size, duration * 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(m, "rotation_degrees:y", 160.0, duration).as_relative()
+	tw.tween_property(mat, "albedo_color:a", 0.0, duration * 0.5).set_delay(duration * 0.5)
+	tw.chain().tween_callback(m.queue_free)
+
+
+## Remolino de partículas del elemento que sube en espiral alrededor de un punto.
+static func swirl(parent: Node3D, pos: Vector3, color: Color, element: int, amount := 40, duration := 0.9) -> void:
+	var name := "circle_05"
+	match element:
+		Rules.Element.FUEGO: name = "flame_05"
+		Rules.Element.HIELO: name = "star_07"
+		Rules.Element.TRUENO: name = "spark_04"
+		Rules.Element.TIERRA: name = "dirt_02"
+		Rules.Element.AIRE: name = "smoke_07"
+		_: name = "star_05"
+	var p := sprite_particles(name, color, amount, duration, 0.14, 0.3, element != Rules.Element.TIERRA)
+	p.position = pos + Vector3(0, 0.1, 0)
+	p.one_shot = true
+	p.explosiveness = 0.6
+	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_RING
+	p.emission_ring_radius = 0.55
+	p.emission_ring_inner_radius = 0.4
+	p.emission_ring_height = 0.1
+	p.emission_ring_axis = Vector3.UP
+	p.direction = Vector3.UP
+	p.spread = 10
+	p.initial_velocity_min = 1.6
+	p.initial_velocity_max = 2.6
+	p.tangential_accel_min = 6.0
+	p.tangential_accel_max = 9.0
+	p.radial_accel_min = -1.0
+	p.radial_accel_max = 0.5
+	p.gravity = Vector3.ZERO
+	p.angular_velocity_min = -180
+	p.angular_velocity_max = 180
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(1, 1, 1, 1))
+	ramp.add_point(0.4, color)
+	ramp.set_color(1, Color(color.r, color.g, color.b, 0))
+	p.color_ramp = ramp
+	parent.add_child(p)
+	p.emitting = true
+	parent.get_tree().create_timer(duration + 0.4).timeout.connect(p.queue_free)
+
+
+## Icono (elemento o arquetipo) que surge, crece y se eleva mirando a la cámara.
+static func icon_rise(parent: Node3D, pos: Vector3, tex: Texture2D, color: Color, size := 0.0025, rise := 1.4, duration := 1.1) -> void:
+	var s := Sprite3D.new()
+	s.texture = tex
+	s.pixel_size = size
+	s.modulate = Color(color.r, color.g, color.b, 0)
+	s.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	s.shaded = false
+	s.no_depth_test = true
+	s.render_priority = 5
+	s.position = pos + Vector3(0, 0.6, 0)
+	s.scale = Vector3.ONE * 0.3
+	parent.add_child(s)
+	var halo := MeshInstance3D.new()
+	var q := QuadMesh.new()
+	q.size = Vector2(1.8, 1.8)
+	halo.mesh = q
+	var hm := sprite_material("light_01", color, true, false)
+	hm.vertex_color_use_as_albedo = false
+	hm.no_depth_test = true
+	halo.material_override = hm
+	s.add_child(halo)
+	halo.position.z = -0.01
+	var tw := parent.create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(s, "modulate:a", 1.0, duration * 0.2)
+	tw.tween_property(s, "scale", Vector3.ONE, duration * 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(s, "position:y", pos.y + 0.6 + rise, duration).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tw.tween_property(s, "modulate:a", 0.0, duration * 0.4).set_delay(duration * 0.6)
+	tw.tween_property(hm, "albedo_color:a", 0.0, duration * 0.4).set_delay(duration * 0.6)
+	tw.chain().tween_callback(s.queue_free)
+
+
+## Lluvia de partículas del elemento sobre una zona (tiers elementales).
+static func rain(parent: Node3D, center: Vector3, extents: Vector3, color: Color, element: int, amount := 90) -> void:
+	var p := _element_particles(element, color, amount, 0.16)
+	p.position = center + Vector3(0, 2.6, 0)
+	p.explosiveness = 0.3
+	p.lifetime = 1.1
+	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	p.emission_box_extents = extents
+	p.direction = Vector3.DOWN
+	p.spread = 15
+	p.initial_velocity_min = 2.0
+	p.initial_velocity_max = 4.0
+	if element == Rules.Element.FUEGO or element == Rules.Element.AIRE:
+		p.gravity = Vector3(0, -2, 0)
+	parent.add_child(p)
+	p.emitting = true
+	parent.get_tree().create_timer(1.8).timeout.connect(p.queue_free)
+
+
+## Onda que recorre media mesa (tiers): un anillo plano que se expande muy ancho.
+static func shockwave(parent: Node3D, pos: Vector3, color: Color, radius := 4.5, duration := 0.7) -> void:
+	var m := MeshInstance3D.new()
+	var q := QuadMesh.new()
+	q.size = Vector2.ONE
+	m.mesh = q
+	var mat := sprite_material("circle_05", color, true, false)
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_DISABLED
+	mat.vertex_color_use_as_albedo = false
+	m.material_override = mat
+	m.position = pos + Vector3(0, 0.09, 0)
+	m.rotation_degrees = Vector3(-90, 0, 0)
+	m.scale = Vector3.ONE * 0.3
+	parent.add_child(m)
+	var tw := parent.create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(m, "scale", Vector3.ONE * radius * 2.0, duration).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(mat, "albedo_color:a", 0.0, duration).set_trans(Tween.TRANS_SINE)
+	tw.chain().tween_callback(m.queue_free)
+
+
+## Escarcha: cristales que brotan alrededor y una bruma fría.
+static func frost(parent: Node3D, pos: Vector3) -> void:
+	var blue := Color(0.65, 0.88, 1.0)
+	var crystals := sprite_particles("star_07", blue, 16, 1.2, 0.18, 0.38)
+	crystals.position = pos + Vector3(0, 0.15, 0)
+	crystals.one_shot = true
+	crystals.explosiveness = 0.9
+	crystals.emission_shape = CPUParticles3D.EMISSION_SHAPE_RING
+	crystals.emission_ring_radius = 0.42
+	crystals.emission_ring_inner_radius = 0.2
+	crystals.emission_ring_height = 0.05
+	crystals.emission_ring_axis = Vector3.UP
+	crystals.direction = Vector3.UP
+	crystals.spread = 25
+	crystals.initial_velocity_min = 0.4
+	crystals.initial_velocity_max = 1.0
+	crystals.gravity = Vector3(0, -0.6, 0)
+	crystals.angular_velocity_min = -60
+	crystals.angular_velocity_max = 60
+	parent.add_child(crystals)
+	crystals.emitting = true
+	parent.get_tree().create_timer(1.8).timeout.connect(crystals.queue_free)
+	var mist := sprite_particles("smoke_07", Color(0.7, 0.9, 1.0, 0.5), 10, 1.0, 0.5, 0.9, false)
+	mist.position = pos + Vector3(0, 0.1, 0)
+	mist.one_shot = true
+	mist.explosiveness = 1.0
+	mist.direction = Vector3.UP
+	mist.spread = 60
+	mist.initial_velocity_min = 0.3
+	mist.initial_velocity_max = 0.8
+	mist.gravity = Vector3.ZERO
+	parent.add_child(mist)
+	mist.emitting = true
+	parent.get_tree().create_timer(1.6).timeout.connect(mist.queue_free)
+	flash(parent, pos + Vector3(0, 0.5, 0), blue, 1.4, 0.3)
+
+
+## Maldición: humo oscuro y símbolos violetas que orbitan.
+static func curse(parent: Node3D, pos: Vector3) -> void:
+	var purple := Color(0.75, 0.4, 1.0)
+	var smoke := sprite_particles("smoke_04", Color(0.3, 0.1, 0.4, 0.75), 14, 1.1, 0.5, 0.9, false)
+	smoke.position = pos + Vector3(0, 0.2, 0)
+	smoke.one_shot = true
+	smoke.explosiveness = 0.8
+	smoke.direction = Vector3.UP
+	smoke.spread = 45
+	smoke.initial_velocity_min = 0.5
+	smoke.initial_velocity_max = 1.2
+	smoke.gravity = Vector3(0, 0.4, 0)
+	parent.add_child(smoke)
+	smoke.emitting = true
+	parent.get_tree().create_timer(1.8).timeout.connect(smoke.queue_free)
+	var runes := sprite_particles("symbol_01", purple, 14, 1.2, 0.16, 0.3)
+	runes.position = pos + Vector3(0, 0.5, 0)
+	runes.one_shot = true
+	runes.explosiveness = 0.7
+	runes.emission_shape = CPUParticles3D.EMISSION_SHAPE_RING
+	runes.emission_ring_radius = 0.5
+	runes.emission_ring_inner_radius = 0.45
+	runes.emission_ring_height = 0.3
+	runes.emission_ring_axis = Vector3.UP
+	runes.direction = Vector3.UP
+	runes.spread = 5
+	runes.initial_velocity_min = 0.3
+	runes.initial_velocity_max = 0.7
+	runes.tangential_accel_min = 4.0
+	runes.tangential_accel_max = 6.0
+	runes.gravity = Vector3.ZERO
+	parent.add_child(runes)
+	runes.emitting = true
+	parent.get_tree().create_timer(1.8).timeout.connect(runes.queue_free)
+	glyph_floor(parent, pos, purple, 1.3, 1.0, "symbol_01")
+
+
+## Esquiva: estela de imágenes fantasma del color dado.
+static func afterimage(parent: Node3D, pos: Vector3, color: Color) -> void:
+	for i in 3:
+		var m := MeshInstance3D.new()
+		var q := QuadMesh.new()
+		q.size = Vector2(1.1, 1.5)
+		q.center_offset = Vector3(0, 0.55, 0)
+		m.mesh = q
+		var mat := sprite_material("light_01", color, true, false)
+		mat.vertex_color_use_as_albedo = false
+		mat.albedo_color.a = 0.9 - i * 0.25
+		mat.billboard_mode = BaseMaterial3D.BILLBOARD_FIXED_Y
+		m.material_override = mat
+		m.position = pos + Vector3(-0.3 * i, 0.05, 0)
+		parent.add_child(m)
+		var tw := parent.create_tween()
+		tw.tween_interval(0.05 * i)
+		tw.tween_property(mat, "albedo_color:a", 0.0, 0.45)
+		tw.tween_callback(m.queue_free)
