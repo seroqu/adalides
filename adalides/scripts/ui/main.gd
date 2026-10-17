@@ -1847,6 +1847,13 @@ func _animate_events(battle: Battle, evs: Array) -> void:
 					var color := Icons.color_of(ch.data)
 					var dir := (target_piece.position - piece.position).normalized()
 					_last_hit = { "dir": dir, "element": ch.data.element, "color": color }
+					# Apuntar: el atacante se gira hacia su objetivo, se dibuja la línea
+					# de ataque y la mira bajo la víctima; una pausa breve para leerlo.
+					var side_color := Color(0.4, 0.7, 1.0) if ch.side == 0 else Color(1.0, 0.45, 0.4)
+					piece.face_towards(target_piece.position, 0.18)
+					Fx.attack_line(board3d, piece.position, target_piece.position, side_color, 0.55 if ch.data.reach() == 1 else 0.8)
+					Fx.target_marker(board3d, target_piece.position, side_color, 1.0)
+					await get_tree().create_timer(0.32, false).timeout
 					if ch.data.reach() == 1:
 						Fx.dust_puff(board3d, piece.position, dir)
 						var lunge := piece.lunge(target_piece.position)
@@ -1861,6 +1868,7 @@ func _animate_events(battle: Battle, evs: Array) -> void:
 						await Fx.projectile(board3d, piece.position, target_piece.position, color, ch.data.element, ch.data.reach() >= 3)
 						Fx.impact(board3d, target_piece.position, color, ch.data.element, dir, 1.0)
 						_camera_shake(0.03)
+					piece.face_default(0.35)
 			"damage":
 				if piece != null:
 					piece.show_hp(e["hp"])

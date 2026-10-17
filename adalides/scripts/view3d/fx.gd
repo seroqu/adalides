@@ -832,3 +832,112 @@ static func defeat(parent: Node3D, center: Vector3) -> void:
 	parent.add_child(ash)
 	ash.emitting = true
 	parent.get_tree().create_timer(3.5).timeout.connect(ash.queue_free)
+
+
+
+# ---------------------------------------------------------------- quién ataca a quién
+
+## Línea de ataque a ras de suelo del atacante al objetivo, con punta de flecha,
+## que se dibuja de origen a destino y se desvanece. Devuelve el nodo para borrarlo.
+static func attack_line(parent: Node3D, from: Vector3, to: Vector3, color: Color, hold := 0.5) -> Node3D:
+	var root := Node3D.new()
+	parent.add_child(root)
+	var a := from + Vector3(0, 0.12, 0)
+	var b := to + Vector3(0, 0.12, 0)
+	var dir := (b - a)
+	var length := dir.length()
+	if length < 0.05:
+		root.queue_free()
+		return root
+	dir = dir / length
+	var head_len := 0.42
+	var body_len := maxf(length - head_len - 0.35, 0.05)
+	# Cuerpo: quad plano con un degradado que se "enciende" del atacante al objetivo.
+	var line := MeshInstance3D.new()
+	var q := QuadMesh.new()
+	q.size = Vector2(0.16, 1.0)
+	q.center_offset = Vector3(0, 0.5, 0)
+	line.mesh = q
+	var tex := GradientTexture2D.new()
+	tex.fill_from = Vector2(0.5, 1.0)
+	tex.fill_to = Vector2(0.5, 0.0)
+	tex.gradient = ramp([[0, Color(color.r, color.g, color.b, 0.15)], [0.7, Color(color.r, color.g, color.b, 0.9)], [1, Color(1, 1, 1, 1)]])
+	var mat := _unshaded(Color.WHITE)
+	mat.albedo_texture = tex
+	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	mat.no_depth_test = true
+	line.material_override = mat
+	line.position = a + dir * 0.35
+	line.rotation_degrees.x = -90
+	line.rotation.y = atan2(dir.x, dir.z)
+	line.scale = Vector3(1, 0.01, 1)
+	root.add_child(line)
+	# Punta: triángulo plano.
+	var tri := MeshInstance3D.new()
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.add_vertex(Vector3(-0.3, 0, 0))
+	st.add_vertex(Vector3(0.3, 0, 0))
+	st.add_vertex(Vector3(0, 0, head_len))
+	st.add_vertex(Vector3(0.3, 0, 0))
+	st.add_vertex(Vector3(-0.3, 0, 0))
+	st.add_vertex(Vector3(0, 0, head_len))
+	tri.mesh = st.commit()
+	var tmat := _unshaded(color.lightened(0.3))
+	tmat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	tmat.no_depth_test = true
+	tri.material_override = tmat
+	tri.position = b - dir * head_len
+	tri.rotation.y = atan2(dir.x, dir.z)
+	tri.scale = Vector3.ONE * 0.01
+	root.add_child(tri)
+	var tw := parent.create_tween()
+	tw.tween_property(line, "scale:y", body_len, 0.18).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(tri, "scale", Vector3.ONE, 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_interval(hold)
+	tw.set_parallel(true)
+	tw.tween_property(mat, "albedo_color:a", 0.0, 0.3)
+	tw.tween_property(tmat, "albedo_color:a", 0.0, 0.3)
+	tw.chain().tween_callback(root.queue_free)
+	return root
+
+
+## Mira pulsante en el suelo bajo el objetivo: anillo rotatorio del color del atacante.
+static func target_marker(parent: Node3D, pos: Vector3, color: Color, duration := 0.9) -> void:
+	var m := MeshInstance3D.new()
+	var q := QuadMesh.new()
+	q.size = Vector2.ONE
+	m.mesh = q
+	var mat := sprite_material("magic_03", color, true, false)
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_DISABLED
+	mat.vertex_color_use_as_albedo = false
+	mat.no_depth_test = true
+	m.material_override = mat
+	m.position = pos + Vector3(0, 0.1, 0)
+	m.rotation_degrees = Vector3(-90, 0, 0)
+	m.scale = Vector3.ONE * 0.2
+	parent.add_child(m)
+	var ring := MeshInstance3D.new()
+	var torus := TorusMesh.new()
+	torus.inner_radius = 0.44
+	torus.outer_radius = 0.5
+	torus.rings = 24
+	torus.ring_segments = 6
+	ring.mesh = torus
+	var rmat := _unshaded(color.lightened(0.2))
+	rmat.no_depth_test = true
+	ring.material_override = rmat
+	ring.position = pos + Vector3(0, 0.1, 0)
+	ring.scale = Vector3.ONE * 1.6
+	parent.add_child(ring)
+	var tw := parent.create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(m, "scale", Vector3.ONE * 1.3, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(ring, "scale", Vector3.ONE, 0.2).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(m, "rotation_degrees:y", 120.0, duration).as_relative()
+	tw.chain().tween_interval(maxf(duration - 0.5, 0.0))
+	tw.chain().tween_property(mat, "albedo_color:a", 0.0, 0.3)
+	tw.parallel().tween_property(rmat, "albedo_color:a", 0.0, 0.3)
+	tw.chain().tween_callback(func() -> void:
+		m.queue_free()
+		ring.queue_free())

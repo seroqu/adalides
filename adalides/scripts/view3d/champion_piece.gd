@@ -125,6 +125,7 @@ func play_clip(key: String, loop := false) -> void:
 ## Salta a la casilla destino con un arco, clip de andar y aplastamiento al caer.
 func hop_to(target: Vector3) -> Tween:
 	play_clip("walk", true)
+	face_towards(target, 0.12)
 	var start := position
 	var tw := create_tween()
 	tw.tween_method(func(t: float) -> void:
@@ -133,7 +134,9 @@ func hop_to(target: Vector3) -> Tween:
 	if body != null:
 		tw.tween_property(body, "scale", body.scale * Vector3(1.15, 0.8, 1.15), 0.06)
 		tw.tween_property(body, "scale", body.scale, 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tw.tween_callback(func() -> void: play_clip("idle", true))
+	tw.tween_callback(func() -> void:
+		play_clip("idle", true)
+		face_default(0.25))
 	return tw
 
 
@@ -192,6 +195,48 @@ func sidestep() -> void:
 	tw.tween_property(self, "position", origin + Vector3(0.45, 0.1, 0), 0.09).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	tw.tween_interval(0.08)
 	tw.tween_property(self, "position", origin, 0.16).set_trans(Tween.TRANS_SINE)
+
+
+var _face_tw: Tween
+
+
+## Ángulo (grados) con el que el modelo mira hacia un punto del mundo.
+func _yaw_to(point: Vector3) -> float:
+	var d := point - position
+	if d.length() < 0.01:
+		return 0.0 if side == 0 else 180.0
+	return rad_to_deg(atan2(d.x, d.z))
+
+
+## Se gira hacia un punto (el objetivo del ataque o la casilla a la que va).
+func face_towards(point: Vector3, duration := 0.18) -> Tween:
+	var body: Node3D = _model if _model != null else null
+	if body == null:
+		return create_tween()
+	if _face_tw != null and _face_tw.is_valid():
+		_face_tw.kill()
+	var target_y := _yaw_to(point)
+	var current := body.rotation_degrees.y
+	var delta := wrapf(target_y - current, -180.0, 180.0)
+	_face_tw = create_tween()
+	_face_tw.tween_property(body, "rotation_degrees:y", current + delta, duration).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	return _face_tw
+
+
+## Vuelve a mirar al frente (al rival, o a la cámara en la alineación).
+func face_default(duration := 0.3) -> void:
+	var body: Node3D = _model if _model != null else null
+	if body == null:
+		return
+	if _face_tw != null and _face_tw.is_valid():
+		_face_tw.kill()
+	var target_y := 0.0 if side == 0 else 180.0
+	if facing_camera and side == 0:
+		target_y = 180.0
+	var current := body.rotation_degrees.y
+	var delta := wrapf(target_y - current, -180.0, 180.0)
+	_face_tw = create_tween()
+	_face_tw.tween_property(body, "rotation_degrees:y", current + delta, duration).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 
 ## Mira al jugador (alineación) o al rival (batalla); con `animate`, gira en medio segundo.
