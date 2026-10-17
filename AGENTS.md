@@ -49,7 +49,10 @@ del juego (README v1: sinergias 3/5/7, DA+DP, estertores) quedó obsoleta el 202
     ├── assets/particles/        Sprites de partículas del Particle Pack de Kenney (CC0); Fx.tex("nombre")
     ├── assets/shaders/          tile.gdshader (casillas: borde, vetas, highlight/hover) y table.gdshader (mesa)
     ├── assets/icons/            SVG de arquetipos y elementos (game-icons.net, CC BY; ver CREDITS.md), marco, dorso y sello
-    ├── assets/models/           GLB por arquetipo generados con tools/build_champions.py (Blender)
+    ├── assets/models/           GLB por arquetipo generados con tools/build_champions.py (Blender): miniaturas de
+    │                            piedra con filetes dorados; el pedestal hexagonal y los cristales del elemento los
+    │                            construye ChampionPiece en código
+    ├── assets/video/victoria.ogv Vídeo de victoria (Theora) que se reproduce a pantalla completa al ganar la partida
     └── tools/build_champions.py Construye y anima los diez modelos en Blender (clips idle, walk,
                                  attack por arquetipo, hit, death, cheer; exporta NLA_TRACKS)
     └── tests/
@@ -108,7 +111,9 @@ muestra; solo el tutorial usa una fija. Por defecto: Amateur, 4 adalides, 4 asal
 espera a que termine la celebración y muestra una clasificación con barras de vida, lo perdido en el ciclo, Éter,
 racha y resultado (`_fill_standings`). Las acciones no permitidas se explican con `_deny(razón)` (aviso rojo
 que tiembla) y los botones deshabilitados llevan borde rojo; el Éter se representa con `assets/icons/eter.svg`
-(`Icons.eter()`, `Icons.eter_bb()` para BBCode), nunca con el rombo. El modo es `Game.Difficulty` y solo cambia a la IA:
+(`Icons.eter()`, `Icons.eter_bb()` para BBCode), nunca con el rombo. En batalla, un campeón que ya atacó o usó
+su poder se apaga (`ChampionPiece.set_spent`) hasta el siguiente asalto. El ojo del menú (`DemiurgeEye`) sigue el
+diseño del vídeo de victoria; al ganar, `_play_victory_video` reproduce `assets/video/victoria.ogv` (clic o Esc salta). El modo es `Game.Difficulty` y solo cambia a la IA:
 Principiante mete mucho ruido en sus puntuaciones, guarda margen antes de mejorar y compra una carta por ciclo;
 Amateur es la IA original con algo de ruido; Profesional no falla combos, invierte antes y refresca el mercado
 si la oferta es floja. Los rivales se llaman Kaelum de las Brasas, Ysolda la Gélida, Tharok Piedrafirme,
@@ -151,6 +156,9 @@ lee `Battle.events` (move / attack / damage / heal / power / tier / dodge / free
 - Capturas de cada fase (abre una ventana real unos segundos):
   `godot --path adalides --resolution 1500x950 -- --screenshots /ruta/de/salida`
 - Recorrido automático del tutorial con capturas: `godot --path adalides -- --tutorial /ruta/de/salida`
+- Vídeo de victoria con capturas: `godot --path adalides -- --victory /ruta/de/salida`
+- Reconstruir los modelos: `blender -b -P adalides/tools/build_champions.py` y copiar
+  `mago_lowpoly_alt.glb` a `mago.glb` (el juego carga `<arquetipo>.glb`)
 - Exportar (plantillas en `~/.local/share/godot/export_templates/4.7.2.stable/`, instaladas desde el .tpz oficial):
   `godot --headless --path adalides --export-release Linux ../build/adalides.x86_64`,
   `--export-release Web ../build/web/index.html` (sin hilos: no necesita cabeceras COOP/COEP, pero sí un

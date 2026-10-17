@@ -8,14 +8,19 @@ OUT = os.path.expanduser("~/Adalides/adalides/assets/models")
 COL_NAME = "ADALIDES_BUILD"
 ONLY = globals().get("ONLY", None)  # lista de nombres a construir, o None = todos
 
+# Miniaturas de piedra tallada (como las estatuillas del vídeo de victoria): tonos de piedra
+# clara y oscura, filetes dorados y cristales de Éter azules. El color del elemento lo ponen
+# los cristales del pedestal y el anillo en el juego, no el modelo.
 PAL = {
-    "skin": (0.80, 0.62, 0.50), "cloth": (0.20, 0.19, 0.26), "leather": (0.38, 0.25, 0.14),
-    "steel": (0.62, 0.64, 0.70), "dark": (0.08, 0.08, 0.10), "bone": (0.90, 0.86, 0.74),
-    "wood": (0.46, 0.30, 0.16), "brass": (0.78, 0.56, 0.24), "fur": (0.48, 0.34, 0.20),
-    "white": (0.93, 0.93, 0.90), "accent": (0.95, 0.35, 0.20), "gold": (0.92, 0.76, 0.30),
-    "red": (0.62, 0.14, 0.14), "purple": (0.36, 0.16, 0.42), "grey": (0.42, 0.42, 0.45),
-    "teal": (0.16, 0.5, 0.5), "green": (0.3, 0.5, 0.25), "blue": (0.2, 0.3, 0.6),
+    "skin": (0.74, 0.72, 0.70), "cloth": (0.40, 0.40, 0.47), "leather": (0.33, 0.31, 0.33),
+    "steel": (0.62, 0.63, 0.68), "dark": (0.14, 0.13, 0.17), "bone": (0.82, 0.80, 0.74),
+    "wood": (0.36, 0.32, 0.30), "brass": (0.80, 0.62, 0.30), "fur": (0.46, 0.43, 0.42),
+    "white": (0.86, 0.85, 0.82), "accent": (0.86, 0.68, 0.30), "gold": (0.92, 0.76, 0.30),
+    "red": (0.50, 0.40, 0.42), "purple": (0.38, 0.33, 0.46), "grey": (0.42, 0.42, 0.45),
+    "teal": (0.35, 0.70, 1.0), "green": (0.40, 0.44, 0.42), "blue": (0.30, 0.34, 0.50),
+    "stone": (0.56, 0.56, 0.62), "stone_dark": (0.30, 0.30, 0.36),
 }
+GLOW = {"teal"}  # materiales emisivos (cristales)
 
 def mat(name):
     m = bpy.data.materials.get("CH_" + name)
@@ -24,8 +29,13 @@ def mat(name):
         m.use_nodes = True
         b = m.node_tree.nodes.get("Principled BSDF")
         b.inputs["Base Color"].default_value = (*PAL[name], 1)
-        b.inputs["Roughness"].default_value = 0.8
-        b.inputs["Specular IOR Level"].default_value = 0.3
+        b.inputs["Roughness"].default_value = 0.35 if name in ("gold", "brass", "steel") else 0.9
+        b.inputs["Specular IOR Level"].default_value = 0.5 if name in ("gold", "brass", "steel") else 0.2
+        if name in ("gold", "brass"):
+            b.inputs["Metallic"].default_value = 0.7
+        if name in GLOW:
+            b.inputs["Emission Color"].default_value = (*PAL[name], 1)
+            b.inputs["Emission Strength"].default_value = 2.0
     return m
 
 col = bpy.data.collections.get(COL_NAME) or bpy.data.collections.new(COL_NAME)
@@ -53,7 +63,7 @@ def add(kind, name, loc, scale=(1, 1, 1), rot=(0, 0, 0), color="cloth", bone="sp
     o.data.materials.append(mat(color))
     if bevel > 0 and kind in ("cube", "cyl", "cone"):
         mod = o.modifiers.new("Bevel", 'BEVEL')
-        mod.width = bevel; mod.segments = 2; mod.limit_method = 'ANGLE'
+        mod.width = bevel; mod.segments = 3; mod.limit_method = 'ANGLE'
     for c in o.users_collection: c.objects.unlink(o)
     col.objects.link(o)
     parts.append((o, bone))
@@ -61,7 +71,8 @@ def add(kind, name, loc, scale=(1, 1, 1), rot=(0, 0, 0), color="cloth", bone="sp
 
 # Esqueleto: hips(0.44) → spine → head; arm.L/R desde los hombros; leg.L/R desde la cadera.
 def body(torso_w=0.5, torso_d=0.34, torso_h=0.55, torso_color="cloth", head_r=0.3, head_color="skin",
-         leg_color="leather", arm_color="cloth", hunched=0.0, boots="dark", belt=None):
+         leg_color="leather", arm_color="cloth", hunched=0.0, boots="dark", belt=None, trim="gold"):
+    head_r = max(head_r, 0.33)  # Cabezas grandes de miniatura.
     add("cyl", "legL", (-0.11, 0, 0.24), (0.19, 0.19, 0.4), color=leg_color, bone="leg.L")
     add("cyl", "legR", (0.11, 0, 0.24), (0.19, 0.19, 0.4), color=leg_color, bone="leg.R")
     add("cube", "bootL", (-0.11, -0.04, 0.06), (0.2, 0.3, 0.12), color=boots, bone="leg.L")
@@ -69,6 +80,8 @@ def body(torso_w=0.5, torso_d=0.34, torso_h=0.55, torso_color="cloth", head_r=0.
     z = 0.44 + torso_h / 2
     add("cube", "torso", (0, hunched * 0.08, z), (torso_w, torso_d, torso_h), rot=(hunched * 18, 0, 0), color=torso_color, bone="spine")
     add("cube", "hips", (0, 0, 0.46), (torso_w * 0.9, torso_d * 0.9, 0.12), color=belt or leg_color, bone="hips")
+    add("cube", "belt_trim", (0, 0, 0.46), (torso_w * 0.94, torso_d * 0.94, 0.04), color=trim, bone="hips", bevel=0.01)
+    add("cube", "buckle", (0, -torso_d * 0.48, 0.46), (0.1, 0.03, 0.09), color=trim, bone="hips", bevel=0.01)
     top = 0.44 + torso_h
     add("sphere", "head", (0, hunched * 0.2, top + head_r * 0.95), (head_r * 2, head_r * 2, head_r * 2), color=head_color, bone="head")
     add("cyl", "neck", (0, hunched * 0.1, top + 0.02), (0.14, 0.14, 0.1), color=head_color, bone="head")
@@ -313,7 +326,8 @@ def defensor():
     add("cube", "visor", (0, -0.27, top + 0.26), (0.42, 0.06, 0.1), color="dark", bone="head")
     add("cube", "shield", (-0.64, -0.06, 0.6), (0.1, 0.56, 1.0), color="accent", bone="arm.L", bevel=0.04)
     add("cube", "shield_rim", (-0.68, -0.06, 0.6), (0.05, 0.64, 1.1), color="steel", bone="arm.L", bevel=0.04)
-    add("cube", "shield_boss", (-0.72, -0.06, 0.6), (0.06, 0.2, 0.2), color="gold", bone="arm.L")
+    add("cube", "shield_boss", (-0.72, -0.06, 0.6), (0.06, 0.2, 0.2), rot=(45, 0, 0), color="gold", bone="arm.L")
+    add("cube", "chest_trim", (0, -0.22, 0.92), (0.4, 0.04, 0.05), color="gold", bone="spine", bevel=0.01)
     add("cyl", "mace_handle", (sx + 0.05, -0.12, top - 0.5), (0.07, 0.07, 0.7), rot=(90, 0, 0), color="wood", bone="arm.R")
     add("sphere", "mace_head", (sx + 0.05, -0.52, top - 0.5), (0.3, 0.3, 0.3), color="steel", bone="arm.R")
     add("cube", "pauldronL", (-sx + 0.02, 0, top - 0.02), (0.28, 0.32, 0.16), color="steel", bone="arm.L")
@@ -391,7 +405,8 @@ def demonio():
 @builder
 def arquero():
     top, sx = body(0.44, 0.3, 0.58, "leather", 0.26, "skin", leg_color="dark", arm_color="leather", boots="leather", belt="dark")
-    add("cone", "hood", (0, 0.02, top + 0.32), (0.58, 0.58, 0.52), color="green", bone="head", r2=0.14)
+    add("cone", "hood", (0, 0.02, top + 0.36), (0.7, 0.68, 0.6), color="green", bone="head", r2=0.16)
+    add("cube", "hood_lip", (0, -0.2, top + 0.4), (0.56, 0.3, 0.1), rot=(-20, 0, 0), color="green", bone="head", bevel=0.04)
     add("cube", "cape", (0, 0.2, 0.76), (0.5, 0.06, 0.62), color="green", bone="spine", bevel=0.04)
     add("torus", "bow", (-sx - 0.05, -0.1, top - 0.48), (1.0, 1.0, 1.0), rot=(0, 90, 0), color="wood", bone="arm.L", minor=0.04)
     add("cyl", "string", (-sx - 0.05, 0.16, top - 0.48), (0.015, 0.015, 1.0), color="bone", bone="arm.L", bevel=0)
@@ -404,11 +419,12 @@ def arquero():
 
 @builder
 def asesino():
-    top, sx = body(0.42, 0.28, 0.56, "dark", 0.26, "dark", leg_color="dark", arm_color="dark", boots="dark", belt="accent")
-    add("cube", "eyes", (0, -0.25, top + 0.28), (0.3, 0.04, 0.05), color="skin", bone="head")
-    add("cube", "mask", (0, -0.24, top + 0.14), (0.42, 0.08, 0.2), color="grey", bone="head")
-    add("cube", "hood_back", (0, 0.1, top + 0.4), (0.44, 0.3, 0.2), color="dark", bone="head")
-    add("cube", "cape", (0, 0.17, 0.78), (0.46, 0.05, 0.52), color="purple", bone="spine", bevel=0.04)
+    top, sx = body(0.42, 0.28, 0.56, "cloth", 0.3, "dark", leg_color="dark", arm_color="cloth", boots="dark", belt="leather")
+    add("cube", "eyes", (0, -0.27, top + 0.3), (0.26, 0.04, 0.05), color="teal", bone="head")
+    add("cone", "hood", (0, 0.03, top + 0.4), (0.74, 0.7, 0.62), color="cloth", bone="head", r2=0.18)
+    add("cube", "hood_lip", (0, -0.2, top + 0.42), (0.6, 0.3, 0.1), rot=(-20, 0, 0), color="cloth", bone="head", bevel=0.04)
+    add("cone", "cloak", (0, 0.1, 0.5), (0.8, 0.6, 0.8), color="cloth", bone="hips", r2=0.34)
+    add("cube", "cloak_trim", (0, -0.05, 0.8), (0.5, 0.42, 0.04), color="gold", bone="spine", bevel=0.01)
     add("cube", "daggerL", (-sx - 0.05, -0.3, top - 0.48), (0.04, 0.32, 0.05), rot=(0, 0, -10), color="steel", bone="arm.L", bevel=0.01)
     add("cube", "daggerR", (sx + 0.05, -0.3, top - 0.48), (0.04, 0.32, 0.05), rot=(0, 0, 10), color="steel", bone="arm.R", bevel=0.01)
     add("cube", "bandL", (-sx, 0, top - 0.3), (0.18, 0.18, 0.16), color="bone", bone="arm.L")
@@ -448,12 +464,15 @@ def muerto():
 
 @builder
 def mago_lowpoly_alt():
-    top, sx = body(0.46, 0.32, 0.6, "purple", 0.27, "skin", leg_color="purple", arm_color="purple", boots="dark", belt="leather")
-    add("cone", "hat", (0, 0, top + 0.62), (0.62, 0.62, 0.72), color="purple", bone="head")
-    add("cyl", "hat_brim", (0, 0, top + 0.28), (0.92, 0.92, 0.05), v=14, color="purple", bone="head")
-    add("cube", "hat_band", (0, 0, top + 0.34), (0.5, 0.5, 0.06), color="gold", bone="head")
+    top, sx = body(0.46, 0.32, 0.6, "purple", 0.3, "skin", leg_color="purple", arm_color="purple", boots="dark", belt="leather")
+    add("cone", "hat", (0, 0, top + 0.64), (0.64, 0.64, 0.78), color="purple", bone="head", rot=(8, 0, 0))
+    add("cyl", "hat_brim", (0, 0, top + 0.28), (1.0, 1.0, 0.05), v=14, color="purple", bone="head")
+    add("cube", "hat_band", (0, 0, top + 0.34), (0.52, 0.52, 0.06), color="gold", bone="head")
+    add("cone", "robe", (0, 0.04, 0.42), (0.78, 0.58, 0.66), color="purple", bone="hips", r2=0.36)
+    add("cube", "robe_trim", (0, -0.2, 0.74), (0.12, 0.05, 0.6), color="gold", bone="spine", bevel=0.01)
     add("cyl", "staff", (sx + 0.05, -0.1, 0.75), (0.06, 0.06, 1.5), color="wood", bone="arm.R")
-    add("sphere", "crystal", (sx + 0.05, -0.1, 1.55), (0.24, 0.24, 0.32), color="teal", bone="arm.R")
+    add("cone", "crystal", (sx + 0.05, -0.1, 1.62), (0.2, 0.2, 0.42), v=6, color="teal", bone="arm.R", bevel=0)
+    add("cone", "crystal_b", (sx + 0.05, -0.1, 1.3), (0.2, 0.2, 0.22), v=6, color="teal", bone="arm.R", bevel=0, rot=(180, 0, 0))
     add("cube", "pouch", (0.2, -0.2, 0.42), (0.12, 0.08, 0.12), color="leather", bone="hips")
     add("cube", "beard", (0, -0.24, top + 0.04), (0.2, 0.08, 0.22), color="white", bone="head")
     return top, sx

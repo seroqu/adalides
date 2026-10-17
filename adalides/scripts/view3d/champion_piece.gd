@@ -22,6 +22,11 @@ var _bar_fill: MeshInstance3D
 var _fill_mat: StandardMaterial3D
 var _shown_hp: int = -1
 var _model: Node3D = null
+var _crystal_mat: StandardMaterial3D # Cristales del pedestal: llevan el color del elemento.
+var _mats: Array[BaseMaterial3D] = [] # Materiales del modelo (copias propias).
+var _orig_albedo: Array[Color] = []
+var _spent: bool = false
+var _spent_tw: Tween
 var _anim: AnimationPlayer = null
 var _clips: Dictionary = {} # "idle" / "attack" / "hit" / "death" → nombre del clip
 
@@ -46,7 +51,7 @@ func _load_model() -> void:
 		if scene == null:
 			continue
 		_model = scene.instantiate()
-		_model.position.y = 0.16
+		_model.position.y = 0.2
 		_model.rotation_degrees.y = 180 if side == 1 else 0 # Mira al rival.
 		add_child(_model)
 		_fit_model()
@@ -79,7 +84,31 @@ func _load_model() -> void:
 					m.emission = Color(0.18, 0.18, 0.2)
 					m.emission_energy_multiplier = 0.9
 					mi.set_surface_override_material(i, m)
+					_mats.append(m)
+					_orig_albedo.append(m.albedo_color)
 		return
+
+
+## Ya actuó este asalto: el modelo pierde el color (piedra apagada) hasta el siguiente asalto.
+func set_spent(v: bool) -> void:
+	if v == _spent:
+		return
+	_spent = v
+	if _spent_tw != null and _spent_tw.is_valid():
+		_spent_tw.kill()
+	_spent_tw = create_tween().set_parallel(true)
+	for i in _mats.size():
+		var m := _mats[i]
+		var orig := _orig_albedo[i]
+		var grey := orig.get_luminance() * 0.38
+		var target := Color(grey, grey, grey * 1.25) if v else orig # Piedra apagada, azulada.
+		_spent_tw.tween_property(m, "albedo_color", target, 0.35)
+		_spent_tw.tween_property(m, "emission_energy_multiplier", 0.15 if v else 0.9, 0.35)
+	if _crystal_mat != null:
+		_spent_tw.tween_property(_crystal_mat, "emission_energy_multiplier", 0.15 if v else 1.4, 0.35)
+	_arch.modulate = Color(0.45, 0.45, 0.5) if v else Color.WHITE
+	if _elem != null:
+		_elem.modulate = Icons.color_of(champion.data) * (0.45 if v else 1.0)
 
 
 ## Escala el modelo para que mida ~0.9 unidades de alto y quede centrado en la casilla.
@@ -89,7 +118,7 @@ func _fit_model() -> void:
 		return
 	var factor := 1.05 / aabb.size.y
 	_model.scale = Vector3.ONE * factor
-	_model.position = Vector3(-aabb.get_center().x * factor, 0.16 - aabb.position.y * factor, -aabb.get_center().z * factor)
+	_model.position = Vector3(-aabb.get_center().x * factor, 0.2 - aabb.position.y * factor, -aabb.get_center().z * factor)
 
 
 func _model_aabb(node: Node) -> AABB:
@@ -294,23 +323,43 @@ func setup(ch: Champion, p_side: int) -> void:
 	champion = ch
 	side = p_side
 	var color := Icons.color_of(ch.data)
-	_base = MeshInstance3D.new()
-	var cyl := CylinderMesh.new()
-	cyl.top_radius = 0.32
-	cyl.bottom_radius = 0.36
-	cyl.height = 0.16
-	_base.mesh = cyl
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
-	mat.emission_enabled = true
-	mat.emission = color * 0.25
-	_base.material_override = mat
-	_base.position.y = 0.08
-	add_child(_base)
+	# Pedestal hexagonal de piedra en dos niveles con filete dorado y cristales del elemento.
+	var stone := StandardMaterial3D.new()
+	stone.albedo_color = Color(0.4, 0.4, 0.46)
+	stone.roughness = 0.92
+	stone.emission_enabled = true
+	stone.emission = Color(0.1, 0.1, 0.13)
+	var gold := StandardMaterial3D.new()
+	gold.albedo_color = Color(0.85, 0.68, 0.3)
+	gold.metallic = 0.6
+	gold.roughness = 0.35
+	gold.emission_enabled = true
+	gold.emission = Color(0.3, 0.22, 0.08)
+	_base = _hex(0.4, 0.42, 0.1, stone, 0.05)
+	_hex(0.31, 0.33, 0.1, stone, 0.15)
+	_hex(0.35, 0.35, 0.025, gold, 0.1)
+	_crystal_mat = StandardMaterial3D.new()
+	_crystal_mat.albedo_color = color
+	_crystal_mat.roughness = 0.2
+	_crystal_mat.emission_enabled = true
+	_crystal_mat.emission = color
+	_crystal_mat.emission_energy_multiplier = 1.4
+	for c in [[Vector3(0.3, 0.1, 0.2), 0.3, 18.0], [Vector3(-0.32, 0.1, 0.12), 0.22, -22.0], [Vector3(0.05, 0.1, -0.36), 0.26, 10.0]]:
+		var shard := MeshInstance3D.new()
+		var cone := CylinderMesh.new()
+		cone.top_radius = 0.0
+		cone.bottom_radius = 0.07
+		cone.height = c[1]
+		cone.radial_segments = 6
+		shard.mesh = cone
+		shard.material_override = _crystal_mat
+		shard.position = c[0] + Vector3(0, c[1] / 2.0, 0)
+		shard.rotation_degrees = Vector3(c[2], 0, -c[2] * 0.6)
+		add_child(shard)
 	_ring = MeshInstance3D.new()
 	var torus := TorusMesh.new()
-	torus.inner_radius = 0.36
-	torus.outer_radius = 0.42
+	torus.inner_radius = 0.43
+	torus.outer_radius = 0.47
 	_ring.mesh = torus
 	var rmat := StandardMaterial3D.new()
 	rmat.albedo_color = Color(0.3, 0.6, 1.0) if side == 0 else Color(1.0, 0.35, 0.3)
@@ -355,6 +404,22 @@ func setup(ch: Champion, p_side: int) -> void:
 	if _anim == null:
 		_start_idle_bob()
 	refresh()
+
+
+## Prisma hexagonal (nivel del pedestal).
+func _hex(top_r: float, bottom_r: float, h: float, mat: Material, y: float) -> MeshInstance3D:
+	var m := MeshInstance3D.new()
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = top_r
+	cyl.bottom_radius = bottom_r
+	cyl.height = h
+	cyl.radial_segments = 6
+	cyl.rings = 1
+	m.mesh = cyl
+	m.material_override = mat
+	m.position.y = y
+	add_child(m)
+	return m
 
 
 ## Barra anclada a la izquierda: el quad crece desde su origen (center_offset) y
@@ -412,11 +477,10 @@ func show_hp(hp: int) -> void:
 
 func flash(color: Color) -> void:
 	play_clip("hit")
-	var mat: StandardMaterial3D = _base.material_override
 	var original := Icons.color_of(champion.data)
 	var tw := create_tween()
-	tw.tween_property(mat, "albedo_color", color, 0.08)
-	tw.tween_property(mat, "albedo_color", original, 0.3)
+	tw.tween_property(_crystal_mat, "emission", color, 0.08)
+	tw.tween_property(_crystal_mat, "emission", original, 0.3)
 
 
 func shake() -> void:

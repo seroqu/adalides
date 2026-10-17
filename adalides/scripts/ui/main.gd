@@ -110,6 +110,10 @@ var _banner_tween: Tween
 var battle_alive: Array[Label] = []
 var hand_empty_label: Label
 var deny_label: Label # Aviso rojo de acción no permitida.
+var video_layer: Control
+var video_player: VideoStreamPlayer
+var video_title: Label
+var _video_token: int = 0
 var _deny_tween: Tween
 var market_reason: Label # Por qué no se puede comprar/vender la selección.
 var upgrade_chips: Dictionary = {} # Track → HBoxContainer con los pasos de la pista.
@@ -130,6 +134,8 @@ func _ready() -> void:
 		_screenshot_tour(args[1])
 	elif args.size() >= 2 and args[0] == "--tutorial":
 		_tutorial_tour(args[1])
+	elif args.size() >= 2 and args[0] == "--victory":
+		_victory_tour(args[1])
 	else:
 		_show_main_menu()
 
@@ -352,6 +358,52 @@ func _build_ui() -> void:
 	fx_layer.add_child(flash_rect)
 	tier_label_top = _tier_label(Control.PRESET_CENTER_TOP, 150)
 	tier_label_bottom = _tier_label(Control.PRESET_CENTER_BOTTOM, -60)
+	# Vídeo de victoria a pantalla completa (se salta con clic o Esc).
+	video_layer = Control.new()
+	video_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	video_layer.visible = false
+	video_layer.mouse_filter = Control.MOUSE_FILTER_STOP
+	video_layer.gui_input.connect(func(ev: InputEvent) -> void:
+		if ev is InputEventMouseButton and ev.pressed:
+			_skip_victory_video())
+	root.add_child(video_layer)
+	var black := ColorRect.new()
+	black.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	black.color = Color.BLACK
+	black.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	video_layer.add_child(black)
+	video_player = VideoStreamPlayer.new()
+	video_player.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	video_player.expand = true
+	video_player.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if ResourceLoader.exists("res://assets/video/victoria.ogv"):
+		video_player.stream = load("res://assets/video/victoria.ogv")
+	video_layer.add_child(video_player)
+	video_title = GameTheme.title("¡ERES EL NUEVO DEMIURGO!", 56)
+	video_title.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	video_title.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	video_title.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	video_title.offset_top = -200
+	video_title.offset_bottom = -110
+	video_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	video_title.add_theme_color_override("font_outline_color", Color(0.25, 0.15, 0.02, 0.95))
+	video_title.add_theme_constant_override("outline_size", 14)
+	video_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	video_title.visible = false
+	video_layer.add_child(video_title)
+	var skip := _label("Clic o Esc para saltar")
+	skip.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	skip.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	skip.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	skip.offset_left = -220
+	skip.offset_top = -40
+	skip.offset_right = -16
+	skip.offset_bottom = -14
+	skip.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	skip.add_theme_color_override("font_color", Color(1, 1, 1, 0.45))
+	skip.add_theme_font_size_override("font_size", 13)
+	skip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	video_layer.add_child(skip)
 	deny_label = Label.new()
 	deny_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
 	deny_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
@@ -801,6 +853,10 @@ func _toggle_pause_menu() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if video_layer != null and video_layer.visible and event.is_action_pressed("ui_cancel"):
+		_skip_victory_video()
+		get_viewport().set_input_as_handled()
+		return
 	if event.is_action_pressed("ui_cancel"):
 		if help_panel.visible or skills_panel.visible or log_panel.visible or standings_panel.visible:
 			for p in [standings_panel, log_panel, skills_panel, help_panel]:
@@ -1460,6 +1516,62 @@ func _buy_block_reason(card: ChampionData) -> String:
 	return ""
 
 
+## Reproduce el vídeo de victoria a pantalla completa; al acabar (o al saltarlo) celebra y muestra el panel.
+func _play_victory_video() -> void:
+	_video_token += 1
+	var token := _video_token
+	if video_player.stream == null:
+		_celebrate("¡ERES EL NUEVO DEMIURGO!", GameTheme.GOLD, true)
+		return
+	var panel: Control = panels[Game.State.OVER]
+	await get_tree().process_frame
+	panel.visible = false
+	video_title.visible = false
+	video_layer.visible = true
+	video_layer.modulate = Color(1, 1, 1, 0)
+	video_player.play()
+	create_tween().tween_property(video_layer, "modulate:a", 1.0, 0.6)
+	# El título entra sobre el plano final del vídeo.
+	await get_tree().create_timer(7.6, false).timeout
+	if token != _video_token:
+		return
+	video_title.visible = true
+	video_title.modulate = Color(1, 1, 1, 0)
+	video_title.pivot_offset = video_title.size / 2.0
+	video_title.scale = Vector2(0.6, 0.6)
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(video_title, "modulate:a", 1.0, 0.4)
+	tw.tween_property(video_title, "scale", Vector2.ONE, 0.7).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	while video_player.is_playing() and token == _video_token:
+		await get_tree().process_frame
+	if token != _video_token:
+		return
+	await get_tree().create_timer(1.2, false).timeout
+	if token != _video_token:
+		return
+	_finish_victory_video()
+
+
+func _skip_victory_video() -> void:
+	if not video_layer.visible:
+		return
+	_video_token += 1
+	_finish_victory_video()
+
+
+func _finish_victory_video() -> void:
+	var tw := create_tween()
+	tw.tween_property(video_layer, "modulate:a", 0.0, 0.5)
+	tw.tween_callback(func() -> void:
+		video_player.stop()
+		video_layer.visible = false
+		if game != null and game.state == Game.State.OVER:
+			var panel: Control = panels[Game.State.OVER]
+			panel.visible = true
+			_pop_in(panel)
+			_celebrate("¡ERES EL NUEVO DEMIURGO!", GameTheme.GOLD, true))
+
+
 ## Entrada animada de un panel centrado.
 func _pop_in(panel: Control) -> void:
 	panel.pivot_offset = panel.size / 2.0
@@ -1666,7 +1778,7 @@ func _enter_state() -> void:
 				_celebrate("El Demiurgo se queda con todo", GameTheme.TEXT_DIM, false)
 			elif w == game.human:
 				res.text = "¡Eres el nuevo demiurgo!"
-				_celebrate("¡ERES EL NUEVO DEMIURGO!", GameTheme.GOLD, true)
+				_play_victory_video()
 			else:
 				res.text = "Has sido eliminado. Gana %s." % (w.display_name if w != null else "nadie")
 				_celebrate("Gana %s" % (w.display_name if w != null else "nadie"), Color(0.9, 0.5, 0.5), false)
@@ -2366,6 +2478,8 @@ func _play_round() -> void:
 	battle.commit_round()
 	var evs := battle.events.duplicate()
 	_refresh()
+	for ch in board3d.pieces:
+		(board3d.pieces[ch] as ChampionPiece).set_spent(false) # Nuevo asalto: todos recuperan el color.
 	await _animate_events(battle, evs)
 	var finished := not battle.begin_round()
 	battle_playing = false
@@ -2423,6 +2537,8 @@ func _animate_events(battle: Battle, evs: Array) -> void:
 				if piece != null:
 					await piece.hop_to(Board3D.world_pos(e["to"])).finished
 			"attack":
+				if piece != null:
+					piece.set_spent(true) # Ya atacó este asalto.
 				var target_piece: ChampionPiece = board3d.piece_of(e["target"])
 				if piece != null and target_piece != null:
 					var color := Icons.color_of(ch.data)
@@ -2475,6 +2591,8 @@ func _animate_events(battle: Battle, evs: Array) -> void:
 					Fx.float_text(board3d, piece.position, "+%d" % e["amount"], green)
 					await get_tree().create_timer(0.35, false).timeout
 			"power":
+				if piece != null:
+					piece.set_spent(true)
 				if piece != null:
 					var elem: int = e.get("element", -1)
 					var color: Color = Icons.ELEMENT_COLORS.get(elem, GameTheme.GOLD)
@@ -2890,6 +3008,27 @@ func _screenshot_tour(dir: String) -> void:
 			await get_tree().process_frame
 		await get_tree().create_timer(0.8, false).timeout
 		await _snap(dir.path_join("8_fin_ciclo.png"))
+	get_tree().quit()
+
+
+## Muestra el vídeo de victoria y captura tres momentos.
+func _victory_tour(dir: String) -> void:
+	_show_main_menu()
+	await get_tree().create_timer(0.6, false).timeout
+	await _snap(dir.path_join("v0_menu.png"))
+	_start_game()
+	await get_tree().create_timer(0.8, false).timeout
+	for a in game.adalids:
+		if a != game.human:
+			a.life = 0
+			a.eliminated = true
+	game.state = Game.State.OVER
+	_enter_state()
+	for t in [2.0, 3.5, 3.0]:
+		await get_tree().create_timer(t, false).timeout
+		await _snap(dir.path_join("v%d_video.png" % int(t * 10)))
+	await get_tree().create_timer(3.0, false).timeout
+	await _snap(dir.path_join("v9_final.png"))
 	get_tree().quit()
 
 
