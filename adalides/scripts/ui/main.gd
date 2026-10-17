@@ -26,7 +26,6 @@ var cam_tw: Tween
 
 var ui: CanvasLayer
 var root: Control
-var seed_edit: LineEdit
 var standings: RichTextLabel
 var standings_panel: PanelContainer
 var log_label: RichTextLabel
@@ -71,6 +70,8 @@ var in_main_menu: bool = true
 var tutorial: Tutorial = null
 var setup_mode: int = 1 # Game.Difficulty
 var setup_players: int = 6
+var setup_rounds: int = Rules.ROUNDS_PER_BATTLE # 0 = hasta el final.
+var rounds_text: Label
 var setup_box: VBoxContainer
 var mode_text: Label
 var lineup_go_button: Button
@@ -100,6 +101,13 @@ var drag_preview_icon: TextureRect
 
 var battle_title: Label
 var battle_status: Label
+var battle_round_label: Label
+var battle_pips: HBoxContainer
+var battle_names: Array[Label] = []
+var battle_lives: Array[Label] = []
+var battle_bars: Array[ProgressBar] = []
+var battle_alive: Array[Label] = []
+var hand_empty_label: Label
 var pause_button: Button
 var step_button: Button
 var battle_paused: bool = false
@@ -395,6 +403,16 @@ func _build_ui() -> void:
 	hand_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hand_panel.add_child(hand_box)
 	hand_panel.resized.connect(_layout_hand)
+	hand_empty_label = _label("")
+	hand_empty_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	hand_empty_label.offset_top = -72
+	hand_empty_label.offset_bottom = -12
+	hand_empty_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hand_empty_label.add_theme_font_size_override("font_size", 14)
+	hand_empty_label.add_theme_color_override("font_color", GameTheme.TEXT_DIM)
+	hand_empty_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hand_empty_label.visible = false
+	hand_panel.add_child(hand_empty_label)
 
 	# Menú: pantalla inicial y pausa.
 	menu_panel = Control.new()
@@ -547,21 +565,30 @@ func _build_ui() -> void:
 		b.add_theme_stylebox_override("pressed", GameTheme.button_style(Color(0.32, 0.24, 0.08), GameTheme.GOLD))
 		b.pressed.connect(func() -> void: setup_players = n)
 		players_row.add_child(b)
-	var seed_row := HBoxContainer.new()
-	seed_row.name = "Seed"
-	seed_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	seed_row.add_theme_constant_override("separation", 8)
-	setup_box.add_child(seed_row)
-	var seed_label := _label("Semilla")
-	seed_label.add_theme_color_override("font_color", GameTheme.TEXT_DIM)
-	seed_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	seed_row.add_child(seed_label)
-	seed_edit = LineEdit.new()
-	seed_edit.text = "0"
-	seed_edit.placeholder_text = "número"
-	seed_edit.custom_minimum_size.x = 120
-	seed_edit.alignment = HORIZONTAL_ALIGNMENT_CENTER
-	seed_row.add_child(seed_edit)
+	setup_box.add_child(GameTheme.heading("Asaltos por batalla", 14))
+	var rounds_row := HBoxContainer.new()
+	rounds_row.add_theme_constant_override("separation", 6)
+	setup_box.add_child(rounds_row)
+	var rounds_group := ButtonGroup.new()
+	for r in Rules.ROUND_OPTIONS:
+		var rounds: int = r
+		var b := Button.new()
+		b.text = str(rounds) if rounds > 0 else "Hasta el final"
+		b.toggle_mode = true
+		b.button_group = rounds_group
+		b.button_pressed = rounds == setup_rounds
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.custom_minimum_size.y = 38
+		b.add_theme_stylebox_override("pressed", GameTheme.button_style(Color(0.32, 0.24, 0.08), GameTheme.GOLD))
+		b.pressed.connect(func() -> void:
+			setup_rounds = rounds
+			rounds_text.text = _rounds_description(rounds))
+		rounds_row.add_child(b)
+	rounds_text = _label(_rounds_description(setup_rounds))
+	rounds_text.add_theme_font_size_override("font_size", 13)
+	rounds_text.add_theme_color_override("font_color", GameTheme.TEXT_DIM)
+	rounds_text.custom_minimum_size.y = 40
+	setup_box.add_child(rounds_text)
 	var start := _menu_button("¡Empezar!", _start_game, true, "Start")
 	setup_box.add_child(start)
 	var back := _menu_button("Volver", func() -> void: _show_setup(false), false, "Back")
@@ -570,6 +597,12 @@ func _build_ui() -> void:
 	# Los paneles desplegables van por encima de la mano y del menú (la guía se abre desde la pausa).
 	for p in [standings_panel, log_panel, skills_panel, help_panel]:
 		root.move_child(p, root.get_child_count() - 1)
+
+
+func _rounds_description(rounds: int) -> String:
+	if rounds == 0:
+		return "La batalla sigue hasta que un bando se queda sin campeones (como mucho %d asaltos)." % Rules.SUDDEN_DEATH_CAP
+	return "Cada batalla dura %d asaltos; gana quien tenga más campeones en pie." % rounds
 
 
 func _tool_button(text: String, on_pressed: Callable) -> Button:
@@ -713,7 +746,7 @@ func _start_game() -> void:
 	top_bar.visible = true
 	side.visible = true
 	_end_tutorial()
-	_new_game(setup_players, setup_mode, false)
+	_new_game(setup_players, setup_mode, false, setup_rounds)
 
 
 ## Partida corta y guiada: tú contra un rival, vida y Éter reducidos, semilla fija.
@@ -1025,6 +1058,73 @@ func _build_battle_panel() -> Control:
 	block.add_child(box)
 	battle_title = GameTheme.heading("")
 	box.add_child(battle_title)
+	# Asaltos: una gema por asalto, la actual encendida.
+	var rounds_row := HBoxContainer.new()
+	rounds_row.add_theme_constant_override("separation", 8)
+	box.add_child(rounds_row)
+	battle_pips = HBoxContainer.new()
+	battle_pips.add_theme_constant_override("separation", 5)
+	battle_pips.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	rounds_row.add_child(battle_pips)
+	battle_round_label = _label("")
+	battle_round_label.add_theme_font_size_override("font_size", 13)
+	battle_round_label.add_theme_color_override("font_color", GameTheme.TEXT_DIM)
+	battle_round_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	battle_round_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	rounds_row.add_child(battle_round_label)
+	# Los dos adalides frente a frente: nombre, vida con barra y campeones en pie.
+	var versus := VBoxContainer.new()
+	versus.add_theme_constant_override("separation", 6)
+	box.add_child(versus)
+	for side in 2:
+		if side == 1:
+			var vs := _label("contra")
+			vs.add_theme_font_override("font", GameTheme.title_font)
+			vs.add_theme_font_size_override("font_size", 12)
+			vs.add_theme_color_override("font_color", GameTheme.GOLD_DIM)
+			vs.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			versus.add_child(vs)
+		var col := VBoxContainer.new()
+		col.add_theme_constant_override("separation", 3)
+		versus.add_child(col)
+		var head := HBoxContainer.new()
+		head.add_theme_constant_override("separation", 8)
+		col.add_child(head)
+		var name_label := Label.new()
+		name_label.add_theme_font_override("font", GameTheme.bold_font)
+		name_label.add_theme_font_size_override("font_size", 15)
+		name_label.add_theme_color_override("font_color", Color(0.6, 0.8, 1.0) if side == 0 else Color(1.0, 0.6, 0.55))
+		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		head.add_child(name_label)
+		battle_names.append(name_label)
+		var alive := Label.new()
+		alive.add_theme_font_size_override("font_size", 13)
+		alive.add_theme_color_override("font_color", GameTheme.TEXT_DIM)
+		head.add_child(alive)
+		battle_alive.append(alive)
+		var life := Label.new()
+		life.add_theme_font_override("font", GameTheme.bold_font)
+		life.add_theme_font_size_override("font_size", 17)
+		life.add_theme_color_override("font_color", Color(0.5, 0.88, 0.5))
+		head.add_child(life)
+		battle_lives.append(life)
+		var bar := ProgressBar.new()
+		bar.show_percentage = false
+		bar.custom_minimum_size.y = 9
+		bar.min_value = 0
+		var bg := StyleBoxFlat.new()
+		bg.bg_color = Color(0.03, 0.02, 0.06, 0.9)
+		bg.border_color = GameTheme.GOLD_DIM
+		bg.set_border_width_all(1)
+		bg.set_corner_radius_all(4)
+		bar.add_theme_stylebox_override("background", bg)
+		var fill := StyleBoxFlat.new()
+		fill.bg_color = Color(0.35, 0.75, 0.4) if side == 0 else Color(0.85, 0.35, 0.32)
+		fill.set_corner_radius_all(4)
+		bar.add_theme_stylebox_override("fill", fill)
+		col.add_child(bar)
+		battle_bars.append(bar)
 	battle_status = _label("")
 	battle_status.add_theme_font_size_override("font_size", 13)
 	battle_status.add_theme_color_override("font_color", GameTheme.TEXT_DIM)
@@ -1200,15 +1300,16 @@ func _add_skill_row(icon: Texture2D, color: Color, name: String, in_cuartel: int
 
 # ---------------------------------------------------------------- flujo
 
-func _new_game(players: int = 6, difficulty: int = Game.Difficulty.AMATEUR, is_tutorial: bool = false) -> void:
+func _new_game(players: int = 6, difficulty: int = Game.Difficulty.AMATEUR, is_tutorial: bool = false, rounds: int = Rules.ROUNDS_PER_BATTLE) -> void:
 	_auto_token += 1
 	battle_playing = false
 	var names: PackedStringArray = ["Tú"]
 	for i in players - 1:
 		names.append(AI_NAMES[i % AI_NAMES.size()])
-	var seed_value := Tutorial.SEED if is_tutorial else (int(seed_edit.text) if seed_edit.text.is_valid_int() else hash(seed_edit.text))
-	game = Game.new(names, seed_value)
+	# Las partidas normales usan una semilla aleatoria; solo el tutorial es fijo.
+	game = Game.new(names, Tutorial.SEED if is_tutorial else 0)
 	game.difficulty = difficulty as Game.Difficulty
+	game.rounds_per_battle = rounds
 	if is_tutorial:
 		game.set_start(Tutorial.LIFE, Tutorial.ETER)
 	game.set_human(0)
@@ -1485,6 +1586,8 @@ func _refresh_hand() -> void:
 		c.queue_free()
 	var h := game.human
 	for ch in h.cuartel:
+		if game.state == Game.State.LINEUP and lineup.values().has(ch):
+			continue # Las cartas colocadas viven en el tablero, no en la mano.
 		var cv := HandCard.new()
 		var extra := ""
 		if game.state == Game.State.DRAFT:
@@ -1492,7 +1595,7 @@ func _refresh_hand() -> void:
 		elif game.state == Game.State.MARKET:
 			extra = "vender por %d ◆" % h.sell_value(ch)
 		elif game.state == Game.State.LINEUP:
-			extra = "en el tablero ✔" if lineup.values().has(ch) else "en la mano"
+			extra = "arrastra al tablero"
 		cv.setup(ch.data, ch, extra)
 		cv.selected = ch == selected_cuartel or ch == pending_card
 		cv.hovered.connect(_on_hand_hover)
@@ -1511,7 +1614,11 @@ func _refresh_hand() -> void:
 				if pending_card != null:
 					_begin_drag({ "kind": "cuartel_card", "champion": ch }, Icons.archetype(ch.data.archetype), ch.data.display_name))
 		hand_box.add_child(cv)
+		if game.state == Game.State.LINEUP:
+			cv.modulate.a = 0.0
+			create_tween().tween_property(cv, "modulate:a", 1.0, 0.2)
 	_layout_hand()
+	_update_hand_empty()
 
 
 ## Abanico: las cartas se reparten en arco, inclinadas hacia los lados y solapadas si no caben.
@@ -1542,18 +1649,32 @@ func _layout_hand() -> void:
 		c.scale = Vector2.ONE
 
 
-## En la alineación la mano no se reconstruye: solo cambian la marca y el texto.
+## En la alineación la mano solo se reconstruye si cambia qué cartas quedan fuera del tablero.
 func _mark_hand() -> void:
-	if hand_box.get_child_count() != game.human.cuartel.size():
+	var expected := 0
+	for ch in game.human.cuartel:
+		if not lineup.values().has(ch):
+			expected += 1
+	if hand_box.get_child_count() != expected:
 		_refresh_hand()
 		return
 	for cv in hand_box.get_children():
 		var c := cv as HandCard
-		if c == null or c.champion == null:
+		if c == null or c.champion == null or lineup.values().has(c.champion):
 			_refresh_hand()
 			return
 		c.selected = c.champion == pending_card
-		c.set_extra("en el tablero ✔" if lineup.values().has(c.champion) else "en la mano")
+	_update_hand_empty()
+
+
+## Aviso en la zona de la mano cuando todos los campeones están colocados.
+func _update_hand_empty() -> void:
+	if hand_empty_label == null:
+		return
+	var empty := hand_box.get_child_count() == 0
+	hand_empty_label.visible = empty and game != null and game.state == Game.State.LINEUP
+	if hand_empty_label.visible:
+		hand_empty_label.text = "Todos tus campeones están en el tablero.\nArrastra una ficha fuera para devolverla a la mano."
 
 
 ## Al pasar el ratón la carta se endereza, sube y crece por encima de las demás;
@@ -1874,8 +1995,14 @@ func _play_round() -> void:
 	var finished := not battle.begin_round()
 	battle_playing = false
 	if finished:
+		var g := game
 		game.advance()
+		_refresh_battle_hud(battle)
+		battle_status.text = "Batalla terminada."
 		_announce_battle(battle)
+		await get_tree().create_timer(1.6, false).timeout # Se ve la vida bajar antes de cambiar de fase.
+		if game != g or game.state != g.state:
+			return
 		_enter_state()
 	else:
 		_refresh_battle()
@@ -2123,13 +2250,68 @@ func _refresh_battle() -> void:
 	if battle == null:
 		return
 	hint.text = "Anillo azul: los tuyos · rojo: el rival."
-	battle_title.text = "Batalla contra %s — asalto %d de %d" % [battle.adalids[1].display_name, battle.round_no, Rules.ROUNDS_PER_BATTLE]
+	_refresh_battle_hud(battle)
 	battle_status.text = "Detenida. Pulsa «Siguiente asalto» para avanzar." if battle_paused else "Automática: un asalto cada %d s." % int(AUTO_ROUND_SECONDS)
 	pause_button.text = "▶ Reanudar" if battle_paused else "⏸ Detener"
 	step_button.visible = battle_paused
 	if not battle_playing:
 		board3d.sync(battle.board.cells, true)
 	_refresh()
+
+
+## Gemas de asalto, vida de los dos adalides y campeones en pie.
+func _refresh_battle_hud(battle: Battle) -> void:
+	battle_title.text = "Batalla contra %s" % battle.adalids[1].display_name
+	var limit := battle.max_rounds
+	var current := maxi(battle.round_no, 1)
+	var shown := limit if limit > 0 else maxi(current, Rules.ROUNDS_PER_BATTLE)
+	for c in battle_pips.get_children():
+		c.queue_free()
+	for i in shown:
+		var pip := Panel.new()
+		pip.custom_minimum_size = Vector2(14, 14)
+		pip.pivot_offset = Vector2(7, 7)
+		var s := StyleBoxFlat.new()
+		s.set_corner_radius_all(7)
+		var played := i + 1 < current or battle.finished
+		var now := i + 1 == current and not battle.finished
+		if now:
+			s.bg_color = Color(1.0, 0.85, 0.45)
+			s.border_color = Color(1.0, 0.95, 0.75)
+			s.set_border_width_all(2)
+			s.shadow_color = Color(1.0, 0.75, 0.3, 0.6)
+			s.shadow_size = 5
+		elif played:
+			s.bg_color = GameTheme.GOLD
+			s.border_color = GameTheme.GOLD_DIM
+			s.set_border_width_all(1)
+		else:
+			s.bg_color = Color(0.1, 0.08, 0.15)
+			s.border_color = GameTheme.GOLD_DIM
+			s.set_border_width_all(1)
+		pip.add_theme_stylebox_override("panel", s)
+		battle_pips.add_child(pip)
+		if now:
+			var tw := pip.create_tween().set_loops() # Ligado a la gema: muere con ella.
+			tw.tween_property(pip, "scale", Vector2.ONE * 1.25, 0.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+			tw.tween_property(pip, "scale", Vector2.ONE, 0.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	if battle.finished:
+		battle_round_label.text = "Terminada en %d asaltos" % battle.round_no
+	elif limit > 0:
+		battle_round_label.text = "Asalto %d de %d" % [current, limit]
+	else:
+		battle_round_label.text = "Asalto %d · hasta el final" % current
+	for side in 2:
+		var a := battle.adalids[side]
+		battle_names[side].text = ("Tú" if a == game.human else a.display_name)
+		var alive := battle.board.alive_count(side)
+		battle_alive[side].text = "⚔ %d/%d en pie" % [alive, battle.squad_size[side]]
+		battle_lives[side].text = "♥ %d" % a.life
+		var bar := battle_bars[side]
+		bar.max_value = maxi(game.start_life, a.life)
+		if bar.value != a.life:
+			var tw := create_tween()
+			tw.tween_property(bar, "value", float(a.life), 0.6).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 
 
 # ---------------------------------------------------------------- refresco general

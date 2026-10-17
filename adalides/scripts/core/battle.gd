@@ -14,6 +14,8 @@ var board: Board
 var rng: RandomNumberGenerator
 var log: PackedStringArray = []
 var round_no: int = 0
+var max_rounds: int = Rules.ROUNDS_PER_BATTLE # 0 = hasta que un bando se quede sin campeones.
+var squad_size: Array[int] = [0, 0] # Campeones con los que empezó cada lado.
 var battle_number: int = 1 # Batallas realizadas hasta ahora (incluida esta).
 var adalids: Array[Adalid] = []
 var elem_tiers: Array[Dictionary] = [{}, {}]
@@ -38,6 +40,7 @@ func _init(a: Adalid, b: Adalid, lineups: Array, p_rng: RandomNumberGenerator, p
 	board = Board.new(a, b)
 	for side in 2:
 		var lineup: Dictionary = lineups[side]
+		squad_size[side] = lineup.size()
 		for key in lineup:
 			var ch: Champion = lineup[key]
 			ch.reset_for_battle()
@@ -188,7 +191,7 @@ func auto_assign(side: int) -> Dictionary:
 	for ch in board.champions(side):
 		if not ch.can_act() or not ch.data.has_power() or not Powers.is_implemented(ch.data.id):
 			continue
-		if ch.data.id == &"salvaje_asesino" and round_no < Rules.ROUNDS_PER_BATTLE:
+		if ch.data.id == &"salvaje_asesino" and not is_last_round():
 			continue # Frenesí solo sirve en el último asalto.
 		candidates.append(ch)
 	return plan_assignment(dice[side], candidates)
@@ -254,7 +257,17 @@ func commit_round(assign_by_side: Array = []) -> void:
 
 
 func is_finished() -> bool:
-	return finished or round_no >= Rules.ROUNDS_PER_BATTLE or board.alive_count(0) == 0 or board.alive_count(1) == 0
+	return finished or round_no >= round_limit() or board.alive_count(0) == 0 or board.alive_count(1) == 0
+
+
+## Último asalto posible (con «hasta el final» hay un tope de seguridad).
+func round_limit() -> int:
+	return max_rounds if max_rounds > 0 else Rules.SUDDEN_DEATH_CAP
+
+
+## ¿Es el asalto final? Sin límite, cuenta como final a partir del cuarto.
+func is_last_round() -> bool:
+	return round_no >= (max_rounds if max_rounds > 0 else Rules.ROUNDS_PER_BATTLE)
 
 
 # ---------------------------------------------------------------- poderes

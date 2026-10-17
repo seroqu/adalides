@@ -29,6 +29,8 @@ const DRAFT_PICKS := 2 # Cada uno toma 2, en orden de serpiente.
 
 # --- Batalla ---
 const ROUNDS_PER_BATTLE := 4
+const ROUND_OPTIONS := [2, 3, 4, 0] # Asaltos por batalla configurables; 0 = hasta que un bando caiga.
+const SUDDEN_DEATH_CAP := 20 # Tope de seguridad cuando la batalla es «hasta el final».
 const BOARD_ROWS := 3 # Fila 1 = frente (SUPUESTO: las filas 1 se enfrentan).
 const BOARD_COLS := 5
 const SPELL_SLOTS := 2

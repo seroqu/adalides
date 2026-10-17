@@ -9,6 +9,8 @@ enum State { IDLE, DRAFT, MARKET, LINEUP, BATTLE, CYCLE_END, OVER }
 enum Difficulty { PRINCIPIANTE, AMATEUR, PROFESIONAL }
 
 var difficulty: Difficulty = Difficulty.AMATEUR
+var rounds_per_battle: int = Rules.ROUNDS_PER_BATTLE # 0 = hasta que un bando caiga.
+var start_life: int = Rules.STARTING_LIFE
 
 var adalids: Array[Adalid] = []
 var deck: Deck
@@ -44,6 +46,7 @@ func set_human(index: int) -> void:
 
 ## Vida y Éter iniciales distintos de los de las reglas (tutorial).
 func set_start(life: int, eter: int) -> void:
+	start_life = life
 	for a in adalids:
 		a.life = life
 		a.eter = eter
@@ -302,16 +305,22 @@ func advance() -> State:
 		var b: Adalid = pair[1]
 		if human_in_play() and (a == human or b == human):
 			var opp: Adalid = b if a == human else a
-			current_battle = Battle.new(human, opp, [human_lineup, auto_lineup(opp)], rng, cycle)
+			current_battle = _make_battle(human, opp, [human_lineup, auto_lineup(opp)])
 			current_battle.start()
 			current_battle.begin_round()
 			state = State.BATTLE
 			return state
-		var battle := Battle.new(a, b, [auto_lineup(a), auto_lineup(b)], rng, cycle)
+		var battle := _make_battle(a, b, [auto_lineup(a), auto_lineup(b)])
 		battle.run()
 		_after_battle(battle)
 	_end_cycle()
 	return state
+
+
+func _make_battle(a: Adalid, b: Adalid, lineups: Array) -> Battle:
+	var battle := Battle.new(a, b, lineups, rng, cycle)
+	battle.max_rounds = rounds_per_battle
+	return battle
 
 
 ## Resuelve el asalto en curso con la asignación { Champion: Rules.Die } del humano.

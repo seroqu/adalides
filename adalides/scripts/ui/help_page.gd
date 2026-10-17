@@ -134,14 +134,14 @@ func _hero(v: VBoxContainer) -> void:
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	col.add_theme_constant_override("separation", 6)
 	row.add_child(col)
-	col.add_child(_text("[b]Eres un adalid con 30 de vida.[/b] Cada ciclo compras campeones con Éter, los colocas en tu campo y el Demiurgo enfrenta tu ejército al de otro adalid en una batalla automática de cuatro asaltos. Pierdes vida al perder batallas. El último adalid en pie se convierte en el nuevo demiurgo.", 15))
+	col.add_child(_text("[b]Eres un adalid con 30 de vida.[/b] Cada ciclo compras campeones con Éter, los colocas en tu campo y el Demiurgo enfrenta tu ejército al de otro adalid en una batalla automática de varios asaltos (2, 3, 4 o hasta el final, según la partida). Pierdes vida al perder batallas. El último adalid en pie se convierte en el nuevo demiurgo.", 15))
 	var chips := HBoxContainer.new()
 	chips.add_theme_constant_override("separation", 8)
 	col.add_child(chips)
 	chips.add_child(_chip("♥ 30 vida", GREEN))
 	chips.add_child(_chip("◆ 30 Éter inicial", BLUE))
 	chips.add_child(_chip("6 adalides", GameTheme.GOLD))
-	chips.add_child(_chip("4 asaltos por batalla", RED))
+	chips.add_child(_chip("2 a 4 asaltos o hasta el final", RED))
 
 
 func _cycle(v: VBoxContainer) -> void:
@@ -281,7 +281,7 @@ func _battle(v: VBoxContainer) -> void:
 	dice.add_child(_chip("−  fallo: activa poderes de −", RED))
 	dice.add_child(_chip("○  neutra: poderes sin requisito", GameTheme.TEXT_DIM))
 	dice.add_child(_chip("+  acierto: poderes de +", GREEN))
-	col.add_child(_text("Dos + juntos hacen un ++ y dos − un −−, los efectos más fuertes de cada poder. Al terminar los cuatro asaltos, quien tenga más campeones en pie gana; el perdedor pierde vida según los campeones que sobrevivieron al rival y el ciclo en curso.", 13, GameTheme.TEXT_DIM))
+	col.add_child(_text("Dos + juntos hacen un ++ y dos − un −−, los efectos más fuertes de cada poder. Al terminar los asaltos, quien tenga más campeones en pie gana; el perdedor pierde vida según los campeones que sobrevivieron al rival y el ciclo en curso.", 13, GameTheme.TEXT_DIM))
 
 
 func _eter(v: VBoxContainer) -> void:

@@ -94,13 +94,16 @@ Supuestos del código:
 `main.gd` construye toda la UI en código: menú principal y de pausa (`Esc` o «☰»; la pausa usa
 `get_tree().paused`, por eso la capa de UI es `PROCESS_MODE_ALWAYS` y los temporizadores usan
 `create_timer(t, false)`), barra superior (vida, Éter, racha, fase y tiempo), columna lateral con solo los controles
-de la fase, mano de cartas abajo y paneles desplegables (Adalides, Habilidades, Crónica, Cómo se juega).
+de la fase (en batalla: gemas de asalto, vida y campeones en pie de los dos adalides), mano de cartas abajo
+(en la alineación solo las cartas que no están en el tablero) y paneles desplegables (Adalides, Habilidades, Crónica, Cómo se juega).
 La cámara cambia por fase (`_camera_view`: tablero, draft o mercado). Las cartas 3D usan
 `assets/icons/card_frame.svg` teñido del color del elemento y `card_back.svg` como dorso.
 
 ## Modos, jugadores y tutorial
 
-El menú «Jugar» pide modo y número de adalides (3, 4 o 6). El modo es `Game.Difficulty` y solo cambia a la IA:
+El menú «Jugar» pide modo, número de adalides (3, 4 o 6) y asaltos por batalla (`Rules.ROUND_OPTIONS`: 2, 3, 4 o
+«hasta el final», que es `Battle.max_rounds = 0` con tope `Rules.SUDDEN_DEATH_CAP`). La semilla es aleatoria y no se
+muestra; solo el tutorial usa una fija. El modo es `Game.Difficulty` y solo cambia a la IA:
 Principiante mete mucho ruido en sus puntuaciones, guarda margen antes de mejorar y compra una carta por ciclo;
 Amateur es la IA original con algo de ruido; Profesional no falla combos, invierte antes y refresca el mercado
 si la oferta es floja. Los rivales se llaman Kaelum de las Brasas, Ysolda la Gélida, Tharok Piedrafirme,

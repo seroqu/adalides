@@ -131,7 +131,7 @@ Los campeones actúan solos:
 
 ### Asalto
 
-Una batalla son **4 asaltos**. Al empezar cada asalto el adalid lanza tantos dados como marque su pista de dados y el
+Una batalla son **4 asaltos** (la versión digital permite elegir 2, 3, 4 o «hasta el final»). Al empezar cada asalto el adalid lanza tantos dados como marque su pista de dados y el
 motor los reparte entre sus campeones: cada poder necesita un dado y (a veces) un resultado concreto. Un **poder activo
 (PA)** sustituye la acción del campeón; un **poder pasivo (PP)** se suma a su acción normal. Sin dado, el campeón ataca.
 En la versión digital los asaltos se resuelven solos cada 2 segundos y se animan (movimientos, daño, poderes y tiers);
