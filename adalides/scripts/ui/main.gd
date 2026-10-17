@@ -1553,7 +1553,7 @@ func _play_intro_video() -> void:
 		_show_main_menu()
 		return
 	var stream: VideoStream = load("res://assets/video/intro.ogv")
-	_play_fullscreen_video(stream, "Adalides del demiurgo", -1.2, _show_main_menu)
+	_play_fullscreen_video(stream, "Adalides del demiurgo", -1.0, _show_main_menu)
 
 
 ## Vídeo a pantalla completa con fundidos. `title_at` es el segundo en que entra el título
