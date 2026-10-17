@@ -1534,7 +1534,7 @@ func _buy_block_reason(card: ChampionData) -> String:
 
 ## Reproduce el vídeo de victoria a pantalla completa; al acabar (o al saltarlo) celebra y muestra el panel.
 func _play_victory_video() -> void:
-	if video_player.stream == null or not ResourceLoader.exists("res://assets/video/victoria.ogv"):
+	if not ResourceLoader.exists("res://assets/video/victoria.ogv"):
 		_celebrate("¡ERES EL NUEVO DEMIURGO!", GameTheme.GOLD, true)
 		return
 	var panel: Control = panels[Game.State.OVER]
