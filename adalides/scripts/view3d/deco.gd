@@ -26,11 +26,7 @@ static func motes(parent: Node3D, pos: Vector3, extents: Vector3, color: Color, 
 	m.gravity = Vector3(0, 0.03, 0)
 	m.angular_velocity_min = -40
 	m.angular_velocity_max = 40
-	var ramp := Gradient.new()
-	ramp.set_color(0, Color(1, 1, 1, 0))
-	ramp.add_point(0.3, Color(1, 1, 1, 1))
-	ramp.add_point(0.7, Color(1, 1, 1, 1))
-	ramp.set_color(1, Color(1, 1, 1, 0))
+	var ramp := Fx.ramp([[0, Color(1, 1, 1, 0)], [0.3, Color(1, 1, 1, 1)], [0.7, Color(1, 1, 1, 1)], [1, Color(1, 1, 1, 0)]])
 	m.color_ramp = ramp
 	parent.add_child(m)
 	m.emitting = true
@@ -105,10 +101,7 @@ static func brazier(parent: Node3D, pos: Vector3) -> OmniLight3D:
 	fire.angle_max = 15
 	fire.angular_velocity_min = -30
 	fire.angular_velocity_max = 30
-	var ramp := Gradient.new()
-	ramp.set_color(0, Color(1, 0.95, 0.6, 1))
-	ramp.add_point(0.4, Color(1, 0.5, 0.1, 0.9))
-	ramp.set_color(1, Color(0.6, 0.1, 0.05, 0))
+	var ramp := Fx.ramp([[0, Color(1, 0.95, 0.6, 1)], [0.4, Color(1, 0.5, 0.1, 0.9)], [1, Color(0.6, 0.1, 0.05, 0)]])
 	fire.color_ramp = ramp
 	parent.add_child(fire)
 	fire.emitting = true

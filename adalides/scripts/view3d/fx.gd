@@ -6,9 +6,22 @@ extends RefCounted
 static var _tex_cache := {}
 
 
+## Degradado a partir de pares (offset, color); evita el lío de índices de Gradient.
+static func ramp(points: Array) -> Gradient:
+	var g := Gradient.new()
+	var offs := PackedFloat32Array()
+	var cols := PackedColorArray()
+	for p in points:
+		offs.append(float(p[0]))
+		cols.append(p[1])
+	g.offsets = offs
+	g.colors = cols
+	return g
+
+
 ## Textura del paquete de partículas de Kenney (assets/particles).
 static func tex(name: String) -> Texture2D:
-	var path := "res://assets/particles/%s.png" % name
+	var path := name if name.begins_with("res://") else "res://assets/particles/%s.png" % name
 	if not _tex_cache.has(path):
 		_tex_cache[path] = load(path)
 	return _tex_cache[path]
@@ -47,10 +60,7 @@ static func sprite_particles(name: String, color: Color, amount: int, lifetime: 
 	p.scale_amount_max = size_max
 	p.angle_min = 0
 	p.angle_max = 360
-	var ramp := Gradient.new()
-	ramp.set_color(0, Color(1, 1, 1, 0))
-	ramp.add_point(0.15, Color(1, 1, 1, 1))
-	ramp.set_color(1, Color(1, 1, 1, 0))
+	var ramp := Fx.ramp([[0, Color(1, 1, 1, 0)], [0.15, Color(1, 1, 1, 1)], [1, Color(1, 1, 1, 0)]])
 	p.color_ramp = ramp
 	var sc := Curve.new()
 	sc.add_point(Vector2(0, 0.6))
@@ -206,10 +216,7 @@ static func _element_particles(element: int, color: Color, amount: int, size: fl
 	var p := sprite_particles(name, color, amount, 0.6, size * 2.5, size * 5.0, element != Rules.Element.TIERRA)
 	p.one_shot = true
 	p.explosiveness = 1.0
-	var ramp := Gradient.new()
-	ramp.set_color(0, Color(1, 1, 1, 1))
-	ramp.add_point(0.35, color)
-	ramp.set_color(1, Color(color.r, color.g, color.b, 0))
+	var ramp := Fx.ramp([[0, Color(1, 1, 1, 1)], [0.35, color], [1, Color(color.r, color.g, color.b, 0)]])
 	p.color_ramp = ramp
 	match element:
 		Rules.Element.FUEGO:
@@ -382,9 +389,7 @@ static func projectile(parent: Node3D, from: Vector3, to: Vector3, color: Color,
 	trail.initial_velocity_min = 0.2
 	trail.initial_velocity_max = 0.6
 	trail.gravity = Vector3(0, 0.8, 0) if element == Rules.Element.FUEGO else Vector3.ZERO
-	var ramp := Gradient.new()
-	ramp.set_color(0, Color(1, 1, 1, 1))
-	ramp.set_color(1, Color(color.r, color.g, color.b, 0))
+	var ramp := Fx.ramp([[0, Color(1, 1, 1, 1)], [1, Color(color.r, color.g, color.b, 0)]])
 	trail.color_ramp = ramp
 	node.add_child(trail)
 	trail.emitting = true
@@ -504,10 +509,7 @@ static func swirl(parent: Node3D, pos: Vector3, color: Color, element: int, amou
 	p.gravity = Vector3.ZERO
 	p.angular_velocity_min = -180
 	p.angular_velocity_max = 180
-	var ramp := Gradient.new()
-	ramp.set_color(0, Color(1, 1, 1, 1))
-	ramp.add_point(0.4, color)
-	ramp.set_color(1, Color(color.r, color.g, color.b, 0))
+	var ramp := Fx.ramp([[0, Color(1, 1, 1, 1)], [0.4, color], [1, Color(color.r, color.g, color.b, 0)]])
 	p.color_ramp = ramp
 	parent.add_child(p)
 	p.emitting = true
@@ -680,3 +682,153 @@ static func afterimage(parent: Node3D, pos: Vector3, color: Color) -> void:
 		tw.tween_interval(0.05 * i)
 		tw.tween_property(mat, "albedo_color:a", 0.0, 0.45)
 		tw.tween_callback(m.queue_free)
+
+
+
+# ---------------------------------------------------------------- muerte y victoria
+
+## Muerte: estallido del color del campeón, humo oscuro, alma que asciende,
+## marca quemada en el suelo que se desvanece y, si es tuyo, un icono ✖ rojo.
+static func death(parent: Node3D, pos: Vector3, color: Color, mine: bool) -> void:
+	flash(parent, pos + Vector3(0, 0.5, 0), color, 1.6, 0.3)
+	shockwave(parent, pos, Color(0.2, 0.1, 0.25), 1.6, 0.6)
+	var smoke := sprite_particles("smoke_04", Color(0.12, 0.08, 0.16, 0.85), 18, 1.4, 0.5, 1.0, false)
+	smoke.position = pos + Vector3(0, 0.2, 0)
+	smoke.one_shot = true
+	smoke.explosiveness = 0.85
+	smoke.direction = Vector3.UP
+	smoke.spread = 50
+	smoke.initial_velocity_min = 0.6
+	smoke.initial_velocity_max = 1.6
+	smoke.gravity = Vector3(0, 0.5, 0)
+	smoke.angular_velocity_min = -40
+	smoke.angular_velocity_max = 40
+	parent.add_child(smoke)
+	smoke.emitting = true
+	parent.get_tree().create_timer(2.2).timeout.connect(smoke.queue_free)
+	# Alma: una luz que sube temblando y se apaga, con motas detrás.
+	var soul := MeshInstance3D.new()
+	var q := QuadMesh.new()
+	q.size = Vector2(0.9, 0.9)
+	soul.mesh = q
+	var sm := sprite_material("light_01", color.lightened(0.5), true, false)
+	sm.vertex_color_use_as_albedo = false
+	sm.no_depth_test = true
+	soul.material_override = sm
+	soul.position = pos + Vector3(0, 0.5, 0)
+	soul.scale = Vector3.ONE * 0.3
+	parent.add_child(soul)
+	var tw := parent.create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(soul, "scale", Vector3.ONE, 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_method(func(t: float) -> void:
+		soul.position = pos + Vector3(sin(t * 9.0) * 0.12, 0.5 + t * 2.2, 0), 0.0, 1.0, 1.6).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tw.tween_property(sm, "albedo_color:a", 0.0, 0.7).set_delay(0.9)
+	tw.chain().tween_callback(soul.queue_free)
+	var motes := sprite_particles("star_05", color.lightened(0.4), 24, 1.4, 0.07, 0.16)
+	motes.position = pos + Vector3(0, 0.3, 0)
+	motes.one_shot = true
+	motes.explosiveness = 0.4
+	motes.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	motes.emission_sphere_radius = 0.3
+	motes.direction = Vector3.UP
+	motes.spread = 20
+	motes.initial_velocity_min = 1.0
+	motes.initial_velocity_max = 2.0
+	motes.gravity = Vector3.ZERO
+	parent.add_child(motes)
+	motes.emitting = true
+	parent.get_tree().create_timer(2.0).timeout.connect(motes.queue_free)
+	# Marca quemada en el suelo.
+	var scorch := MeshInstance3D.new()
+	var sq := QuadMesh.new()
+	sq.size = Vector2(1.1, 1.1)
+	scorch.mesh = sq
+	var scm := sprite_material("scorch_01", Color(0.05, 0.03, 0.06, 0.9), false, false)
+	scm.billboard_mode = BaseMaterial3D.BILLBOARD_DISABLED
+	scm.vertex_color_use_as_albedo = false
+	scorch.material_override = scm
+	scorch.position = pos + Vector3(0, 0.075, 0)
+	scorch.rotation_degrees = Vector3(-90, randf() * 360.0, 0)
+	parent.add_child(scorch)
+	var stw := parent.create_tween()
+	stw.tween_interval(2.5)
+	stw.tween_property(scm, "albedo_color:a", 0.0, 2.0)
+	stw.tween_callback(scorch.queue_free)
+	if mine:
+		float_text(parent, pos + Vector3(0, 0.3, 0), "✖", Color(1, 0.35, 0.3), 72)
+	else:
+		float_text(parent, pos + Vector3(0, 0.3, 0), "✖", Color(0.9, 0.9, 0.9), 56)
+
+
+## Victoria: onda dorada, lluvia de estrellas sobre todo el campo y haces en las esquinas.
+static func victory(parent: Node3D, center: Vector3, color: Color) -> void:
+	shockwave(parent, center, color, 6.0, 1.0)
+	glyph_floor(parent, center, Color(color.r, color.g, color.b, 0.8), 8.5, 2.4, "res://assets/icons/rune_ring.svg")
+	var stars := sprite_particles("star_07", color, 160, 2.2, 0.12, 0.3)
+	stars.position = center + Vector3(0, 4.0, 0)
+	stars.one_shot = true
+	stars.explosiveness = 0.35
+	stars.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	stars.emission_box_extents = Vector3(3.5, 0.2, 4.0)
+	stars.direction = Vector3.DOWN
+	stars.spread = 20
+	stars.initial_velocity_min = 0.6
+	stars.initial_velocity_max = 1.6
+	stars.gravity = Vector3(0, -1.6, 0)
+	stars.angular_velocity_min = -180
+	stars.angular_velocity_max = 180
+	parent.add_child(stars)
+	stars.emitting = true
+	parent.get_tree().create_timer(3.0).timeout.connect(stars.queue_free)
+	var sparks := sprite_particles("spark_04", Color(1, 0.95, 0.7), 90, 1.4, 0.15, 0.35)
+	sparks.position = center + Vector3(0, 0.3, 0)
+	sparks.one_shot = true
+	sparks.explosiveness = 1.0
+	sparks.emission_shape = CPUParticles3D.EMISSION_SHAPE_RING
+	sparks.emission_ring_radius = 3.5
+	sparks.emission_ring_inner_radius = 3.3
+	sparks.emission_ring_height = 0.1
+	sparks.emission_ring_axis = Vector3.UP
+	sparks.direction = Vector3.UP
+	sparks.spread = 15
+	sparks.initial_velocity_min = 5.0
+	sparks.initial_velocity_max = 8.0
+	sparks.gravity = Vector3(0, -6, 0)
+	parent.add_child(sparks)
+	sparks.emitting = true
+	parent.get_tree().create_timer(2.0).timeout.connect(sparks.queue_free)
+
+
+## Derrota: humo rojo oscuro que cubre tu mitad y ascuas que caen.
+static func defeat(parent: Node3D, center: Vector3) -> void:
+	var smoke := sprite_particles("smoke_07", Color(0.35, 0.05, 0.08, 0.8), 40, 2.4, 0.9, 1.6, false)
+	smoke.position = center + Vector3(0, 0.2, 0)
+	smoke.one_shot = true
+	smoke.explosiveness = 0.5
+	smoke.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	smoke.emission_box_extents = Vector3(3.0, 0.1, 1.6)
+	smoke.direction = Vector3.UP
+	smoke.spread = 30
+	smoke.initial_velocity_min = 0.3
+	smoke.initial_velocity_max = 0.8
+	smoke.gravity = Vector3(0, 0.3, 0)
+	smoke.angular_velocity_min = -20
+	smoke.angular_velocity_max = 20
+	parent.add_child(smoke)
+	smoke.emitting = true
+	parent.get_tree().create_timer(3.5).timeout.connect(smoke.queue_free)
+	var ash := sprite_particles("circle_05", Color(1.0, 0.4, 0.2), 60, 2.5, 0.05, 0.12)
+	ash.position = center + Vector3(0, 3.0, 0)
+	ash.one_shot = true
+	ash.explosiveness = 0.2
+	ash.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	ash.emission_box_extents = Vector3(3.2, 0.2, 1.8)
+	ash.direction = Vector3.DOWN
+	ash.spread = 30
+	ash.initial_velocity_min = 0.3
+	ash.initial_velocity_max = 0.9
+	ash.gravity = Vector3(0, -0.8, 0)
+	parent.add_child(ash)
+	ash.emitting = true
+	parent.get_tree().create_timer(3.5).timeout.connect(ash.queue_free)

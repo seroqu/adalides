@@ -384,35 +384,79 @@ func _build_ui() -> void:
 	menu_panel.visible = false
 	root.add_child(menu_panel)
 	var veil := ColorRect.new()
+	veil.name = "Veil"
 	veil.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	veil.color = Color(0.02, 0.01, 0.05, 0.6)
 	menu_panel.add_child(veil)
+	# Viñeta: oscuridad que cierra los bordes (solo en el menú principal).
+	var vignette := TextureRect.new()
+	vignette.name = "Vignette"
+	vignette.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	vignette.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	vignette.stretch_mode = TextureRect.STRETCH_SCALE
+	vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var vt := GradientTexture2D.new()
+	vt.fill = GradientTexture2D.FILL_RADIAL
+	vt.fill_from = Vector2(0.5, 0.5)
+	vt.fill_to = Vector2(0.5, 0.0)
+	vt.width = 256
+	vt.height = 256
+	var vg := Fx.ramp([[0, Color(0.03, 0.01, 0.06, 0.0)], [0.55, Color(0.03, 0.01, 0.06, 0.35)], [1, Color(0.01, 0.0, 0.02, 0.97)]])
+	vt.gradient = vg
+	vignette.texture = vt
+	menu_panel.add_child(vignette)
+	# Brasas y motas violetas que suben lentamente.
+	var embers := CPUParticles2D.new()
+	embers.name = "Embers"
+	embers.amount = 90
+	embers.lifetime = 7.0
+	embers.preprocess = 7.0
+	embers.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	embers.emission_rect_extents = Vector2(900, 60)
+	embers.direction = Vector2(0, -1)
+	embers.spread = 25
+	embers.initial_velocity_min = 25
+	embers.initial_velocity_max = 70
+	embers.gravity = Vector2(0, -8)
+	embers.scale_amount_min = 0.03
+	embers.scale_amount_max = 0.09
+	embers.texture = Fx.tex("circle_05")
+	var eg := Fx.ramp([[0, Color(0.9, 0.6, 0.3, 0.0)], [0.2, Color(0.9, 0.55, 0.25, 0.9)], [0.7, Color(0.6, 0.3, 0.7, 0.7)], [1, Color(0.4, 0.2, 0.6, 0.0)]])
+	embers.color_ramp = eg
+	menu_panel.add_child(embers)
+	menu_panel.resized.connect(func() -> void: embers.position = Vector2(menu_panel.size.x / 2.0, menu_panel.size.y + 40))
 	var mp := PanelContainer.new()
 	mp.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	mp.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	mp.grow_vertical = Control.GROW_DIRECTION_BOTH
 	var ms := GameTheme.panel_style()
 	ms.set_content_margin_all(28)
-	ms.bg_color = Color(0.05, 0.04, 0.09, 0.96)
-	ms.border_color = GameTheme.GOLD
+	ms.bg_color = Color(0.04, 0.03, 0.07, 0.9)
+	ms.border_color = GameTheme.GOLD_DIM
+	ms.shadow_size = 40
+	ms.shadow_color = Color(0, 0, 0, 0.8)
 	mp.add_theme_stylebox_override("panel", ms)
 	menu_panel.add_child(mp)
 	menu_box = VBoxContainer.new()
 	menu_box.add_theme_constant_override("separation", 10)
 	menu_box.custom_minimum_size.x = 440
 	mp.add_child(menu_box)
-	var emblem := TextureRect.new()
+	var emblem := DemiurgeEye.new()
 	emblem.name = "Emblem"
-	emblem.texture = Icons.card_back()
-	emblem.custom_minimum_size = Vector2(80, 112)
-	emblem.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	emblem.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	emblem.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	menu_box.add_child(emblem)
-	menu_title = GameTheme.title("Adalides del demiurgo", 36)
+	menu_title = GameTheme.title("Adalides del demiurgo", 34)
 	menu_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	menu_title.autowrap_mode = TextServer.AUTOWRAP_WORD
+	menu_title.add_theme_constant_override("outline_size", 10)
+	menu_title.add_theme_color_override("font_outline_color", Color(0.3, 0.1, 0.4, 0.9))
+	menu_title.add_theme_constant_override("shadow_offset_x", 0)
+	menu_title.add_theme_constant_override("shadow_offset_y", 4)
+	menu_title.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
 	menu_box.add_child(menu_title)
+	var glow_tw := create_tween().set_loops()
+	glow_tw.tween_property(menu_title, "modulate", Color(1.0, 0.95, 0.85), 1.6).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	glow_tw.tween_property(menu_title, "modulate", Color(0.78, 0.7, 0.62), 1.6).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	var strip := HBoxContainer.new()
 	strip.name = "Strip"
 	strip.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -572,6 +616,10 @@ func _set_menu_mode(main: bool) -> void:
 	menu_box.get_node("Subtitle").visible = main
 	menu_box.get_node("Emblem").visible = main
 	menu_box.get_node("Strip").visible = main
+	menu_panel.get_node("Vignette").visible = main
+	menu_panel.get_node("Embers").emitting = main
+	menu_panel.get_node("Embers").visible = main
+	(menu_panel.get_node("Veil") as ColorRect).color = Color(0.02, 0.01, 0.05, 0.75 if main else 0.6)
 	menu_box.get_node("Play").visible = main
 	menu_box.get_node("Seed").visible = main
 	menu_box.get_node("Resume").visible = not main
@@ -1640,11 +1688,21 @@ func _announce_battle(battle: Battle) -> void:
 		for ch in board3d.pieces:
 			if ch.side == (0 if winner == battle.adalids[0] else 1):
 				(board3d.pieces[ch] as ChampionPiece).cheer()
+	var center := Vector3(Board3D.world_x(2), 0, (Board3D.world_z(0) + Board3D.world_z(5)) / 2.0)
 	if r.get("tie", false):
 		_celebrate("Empate", GameTheme.TEXT_DIM, false)
 	elif r.get("winner") == game.human:
+		_camera_shake(0.05)
+		Fx.victory(board3d, center, GameTheme.GOLD)
+		for ch in board3d.pieces:
+			var p: ChampionPiece = board3d.pieces[ch]
+			if ch.side == 0 and p.visible:
+				Fx.pillar(board3d, p.position, GameTheme.GOLD, 3.0, 0.9, 1.4)
+				Fx.glyph_floor(board3d, p.position, GameTheme.GOLD, 1.5, 1.6)
 		_celebrate("¡VICTORIA!", GameTheme.GOLD, true)
 	else:
+		Fx.defeat(board3d, Vector3(Board3D.world_x(2), 0, Board3D.world_z(1)))
+		_screen_flash(Color(0.3, 0.02, 0.05))
 		_celebrate("Derrota", Color(0.95, 0.45, 0.4), false)
 
 
@@ -1771,10 +1829,14 @@ func _animate_events(battle: Battle, evs: Array) -> void:
 					await get_tree().create_timer(0.35, false).timeout
 			"death":
 				if piece != null:
+					var is_mine := ch.side == 0
 					piece.play_clip("death")
-					Fx.burst(board3d, piece.position + Vector3(0, 0.4, 0), Color(0.5, 0.5, 0.55), 30, 0.08)
-					Fx.float_text(board3d, piece.position, "✖", Color(0.9, 0.9, 0.9), 60)
-					await get_tree().create_timer(1.0 if piece.has_model() else 0.25, false).timeout
+					piece.tint(Color(0.1, 0.08, 0.12), 1.4)
+					_camera_shake(0.06)
+					Fx.death(board3d, piece.position, Icons.color_of(ch.data), is_mine)
+					if is_mine:
+						_screen_flash(Color(0.4, 0.05, 0.1))
+					await get_tree().create_timer(1.0 if piece.has_model() else 0.4, false).timeout
 	board3d.sync(battle.board.cells, true)
 	_refresh()
 
@@ -1826,11 +1888,18 @@ func _celebrate(text: String, color: Color, big: bool) -> void:
 	await get_tree().process_frame
 	banner.pivot_offset = banner.size / 2.0
 	banner.position = (fx_layer.size - banner.size) / 2.0
+	banner.add_theme_color_override("font_outline_color", Color(color.r * 0.3, color.g * 0.3, color.b * 0.3, 0.95) if big else Color(0, 0, 0, 0.9))
 	var tw := create_tween()
 	tw.set_parallel(true)
 	tw.tween_property(banner, "modulate:a", 1.0, 0.2)
-	tw.tween_property(banner, "scale", Vector2.ONE, 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tw.chain().tween_interval(2.2 if big else 1.4)
+	tw.tween_property(banner, "scale", Vector2.ONE * (1.25 if big else 1.0), 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	if big:
+		tw.chain().tween_property(banner, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_SINE)
+		for i in 3:
+			tw.chain().tween_property(banner, "scale", Vector2.ONE * 1.06, 0.35).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+			tw.chain().tween_property(banner, "scale", Vector2.ONE, 0.35).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	else:
+		tw.chain().tween_interval(1.4)
 	tw.chain().tween_property(banner, "modulate:a", 0.0, 0.5)
 	tw.chain().tween_callback(func() -> void: banner.visible = false)
 	if big:
@@ -1900,6 +1969,7 @@ func _refresh() -> void:
 
 func _screenshot_tour(dir: String) -> void:
 	_show_main_menu()
+	await get_tree().create_timer(1.2, false).timeout
 	await _snap(dir.path_join("0_menu.png"))
 	_start_game()
 	await get_tree().create_timer(0.8, false).timeout
@@ -1993,6 +2063,7 @@ func _screenshot_tour(dir: String) -> void:
 				{ "type": "freeze", "ch": theirs[0] },
 				{ "type": "curse", "ch": theirs[-1] },
 				{ "type": "dodge", "ch": mine[-1] },
+				{ "type": "death", "ch": theirs[0] },
 			]
 			var k := 0
 			for de in demo_evs:
@@ -2005,6 +2076,19 @@ func _screenshot_tour(dir: String) -> void:
 				await get_tree().create_timer(0.6, false).timeout
 				battle_playing = false
 				k += 1
+			# Demo de victoria.
+			var center := Vector3(Board3D.world_x(2), 0, (Board3D.world_z(0) + Board3D.world_z(5)) / 2.0)
+			Fx.victory(board3d, center, GameTheme.GOLD)
+			for ch in board3d.pieces:
+				var pz: ChampionPiece = board3d.pieces[ch]
+				if ch.side == 0 and pz.visible:
+					Fx.pillar(board3d, pz.position, GameTheme.GOLD, 3.0, 0.9, 1.4)
+					pz.cheer()
+			_celebrate("¡VICTORIA!", GameTheme.GOLD, true)
+			for j in 4:
+				await get_tree().create_timer(0.25, false).timeout
+				await _snap(dir.path_join("4_fx_victoria_%d.png" % j))
+			await get_tree().create_timer(2.0, false).timeout
 		_step_round()
 		for i in 14:
 			await get_tree().create_timer(0.12, false).timeout
