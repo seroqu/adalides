@@ -18,6 +18,7 @@ var cycle: int = 0
 var rng := RandomNumberGenerator.new()
 var log: PackedStringArray = []
 var last_battles: Array[Battle] = []
+var life_before: Dictionary = {} # Adalid → vida al empezar el ciclo (para el resumen).
 var demiurge_wins: bool = false
 
 # --- humano ---
@@ -102,6 +103,9 @@ func begin_cycle() -> bool:
 	cycle += 1
 	log.clear()
 	last_battles.clear()
+	life_before.clear()
+	for a in adalids:
+		life_before[a] = a.life
 	log.append("##### Ciclo %d #####" % cycle)
 	if cycle > 1:
 		_begin_market() # El draft solo se hace en el primer ciclo.

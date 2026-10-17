@@ -69,7 +69,7 @@ var menu_title: Label
 var in_main_menu: bool = true
 var tutorial: Tutorial = null
 var setup_mode: int = 1 # Game.Difficulty
-var setup_players: int = 6
+var setup_players: int = 4
 var setup_rounds: int = Rules.ROUNDS_PER_BATTLE # 0 = hasta el final.
 var rounds_text: Label
 var setup_box: VBoxContainer
@@ -106,6 +106,8 @@ var battle_pips: HBoxContainer
 var battle_names: Array[Label] = []
 var battle_lives: Array[Label] = []
 var battle_bars: Array[ProgressBar] = []
+var battle_hp: Array[Label] = []
+var _banner_tween: Tween
 var battle_alive: Array[Label] = []
 var hand_empty_label: Label
 var pause_button: Button
@@ -1098,33 +1100,50 @@ func _build_battle_panel() -> Control:
 		name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		head.add_child(name_label)
 		battle_names.append(name_label)
-		var alive := Label.new()
-		alive.add_theme_font_size_override("font_size", 13)
-		alive.add_theme_color_override("font_color", GameTheme.TEXT_DIM)
-		head.add_child(alive)
-		battle_alive.append(alive)
 		var life := Label.new()
 		life.add_theme_font_override("font", GameTheme.bold_font)
 		life.add_theme_font_size_override("font_size", 17)
 		life.add_theme_color_override("font_color", Color(0.5, 0.88, 0.5))
+		life.tooltip_text = "Vida del adalid"
 		head.add_child(life)
 		battle_lives.append(life)
+		# Vida total de los campeones que están peleando.
+		var hp_row := HBoxContainer.new()
+		hp_row.add_theme_constant_override("separation", 8)
+		col.add_child(hp_row)
+		var alive := Label.new()
+		alive.add_theme_font_size_override("font_size", 13)
+		alive.add_theme_color_override("font_color", GameTheme.TEXT_DIM)
+		alive.custom_minimum_size.x = 48
+		hp_row.add_child(alive)
+		battle_alive.append(alive)
 		var bar := ProgressBar.new()
 		bar.show_percentage = false
-		bar.custom_minimum_size.y = 9
+		bar.custom_minimum_size.y = 12
+		bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		bar.min_value = 0
+		bar.tooltip_text = "Vida que les queda entre todos los campeones en batalla"
 		var bg := StyleBoxFlat.new()
 		bg.bg_color = Color(0.03, 0.02, 0.06, 0.9)
 		bg.border_color = GameTheme.GOLD_DIM
 		bg.set_border_width_all(1)
-		bg.set_corner_radius_all(4)
+		bg.set_corner_radius_all(5)
 		bar.add_theme_stylebox_override("background", bg)
 		var fill := StyleBoxFlat.new()
-		fill.bg_color = Color(0.35, 0.75, 0.4) if side == 0 else Color(0.85, 0.35, 0.32)
-		fill.set_corner_radius_all(4)
+		fill.bg_color = Color(0.35, 0.6, 0.95) if side == 0 else Color(0.9, 0.35, 0.32)
+		fill.set_corner_radius_all(5)
 		bar.add_theme_stylebox_override("fill", fill)
-		col.add_child(bar)
+		hp_row.add_child(bar)
 		battle_bars.append(bar)
+		var hp := Label.new()
+		hp.add_theme_font_override("font", GameTheme.bold_font)
+		hp.add_theme_font_size_override("font_size", 13)
+		hp.add_theme_color_override("font_color", GameTheme.TEXT)
+		hp.custom_minimum_size.x = 54
+		hp.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		hp_row.add_child(hp)
+		battle_hp.append(hp)
 	battle_status = _label("")
 	battle_status.add_theme_font_size_override("font_size", 13)
 	battle_status.add_theme_color_override("font_color", GameTheme.TEXT_DIM)
@@ -1155,7 +1174,7 @@ func _build_cycle_end_panel() -> Control:
 	p.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	p.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	p.grow_vertical = Control.GROW_DIRECTION_BOTH
-	p.custom_minimum_size.x = 520
+	p.custom_minimum_size.x = 700
 	var s := GameTheme.panel_style()
 	s.bg_color = Color(0.05, 0.04, 0.09, 0.97)
 	s.border_color = GameTheme.GOLD
@@ -1168,14 +1187,13 @@ func _build_cycle_end_panel() -> Control:
 	t.name = "Title"
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(t)
-	var table_label := RichTextLabel.new()
-	table_label.name = "Table"
-	table_label.bbcode_enabled = true
-	table_label.fit_content = true
-	table_label.scroll_active = false
-	table_label.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
-	table_label.add_theme_font_size_override("normal_font_size", 15)
-	box.add_child(table_label)
+	var headline := _label("")
+	headline.name = "Headline"
+	headline.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	headline.add_theme_font_override("font", GameTheme.bold_font)
+	headline.add_theme_font_size_override("font_size", 16)
+	box.add_child(headline)
+	box.add_child(_standings_box())
 	var next := Button.new()
 	next_cycle_button = next
 	next.text = "Siguiente ciclo →"
@@ -1188,12 +1206,162 @@ func _build_cycle_end_panel() -> Control:
 	return p
 
 
+## Contenedor de la clasificación (se rellena con `_fill_standings`).
+func _standings_box() -> VBoxContainer:
+	var rows := VBoxContainer.new()
+	rows.name = "Rows"
+	rows.add_theme_constant_override("separation", 4)
+	return rows
+
+
+## Clasificación del ciclo: puesto, nombre, barra de vida con lo perdido o ganado este ciclo,
+## Éter, racha y resultado de su batalla. Tu fila va resaltada.
+func _fill_standings(rows: VBoxContainer) -> void:
+	for c in rows.get_children():
+		c.queue_free()
+	var order: Array[Adalid] = []
+	order.assign(game.adalids)
+	order.sort_custom(func(a: Adalid, b: Adalid) -> bool:
+		if a.eliminated != b.eliminated:
+			return not a.eliminated
+		return a.life > b.life or (a.life == b.life and a.eter > b.eter))
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation", 10)
+	rows.add_child(header)
+	for col in [["", 26], ["Adalid", 0], ["Vida", 150], ["", 58], ["Éter", 50], ["Racha", 50], ["Ciclo", 40]]:
+		var l := Label.new()
+		l.text = col[0]
+		l.add_theme_font_size_override("font_size", 12)
+		l.add_theme_color_override("font_color", GameTheme.GOLD_DIM)
+		if col[1] == 0:
+			l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		else:
+			l.custom_minimum_size.x = col[1]
+		header.add_child(l)
+	var rank := 0
+	for a in order:
+		rank += 1
+		var row := PanelContainer.new()
+		var s := StyleBoxFlat.new()
+		s.bg_color = Color(0.2, 0.16, 0.07, 0.9) if a == game.human else Color(0.1, 0.08, 0.15, 0.6)
+		s.border_color = GameTheme.GOLD if a == game.human else Color(0, 0, 0, 0)
+		s.set_border_width_all(1)
+		s.set_corner_radius_all(6)
+		s.content_margin_left = 8
+		s.content_margin_right = 8
+		s.content_margin_top = 5
+		s.content_margin_bottom = 5
+		row.add_theme_stylebox_override("panel", s)
+		rows.add_child(row)
+		var h := HBoxContainer.new()
+		h.add_theme_constant_override("separation", 10)
+		row.add_child(h)
+		var dim := a.eliminated
+		var rank_label := Label.new()
+		rank_label.text = "%d." % rank
+		rank_label.custom_minimum_size.x = 26
+		rank_label.add_theme_font_override("font", GameTheme.bold_font)
+		rank_label.add_theme_color_override("font_color", GameTheme.GOLD if rank == 1 and not dim else GameTheme.TEXT_DIM)
+		h.add_child(rank_label)
+		var name_label := Label.new()
+		name_label.text = ("Tú" if a == game.human else a.display_name) + (" ✝" if dim else "")
+		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		name_label.custom_minimum_size.x = 190
+		name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		name_label.add_theme_font_override("font", GameTheme.bold_font)
+		name_label.add_theme_font_size_override("font_size", 15)
+		name_label.add_theme_color_override("font_color", Color(0.45, 0.42, 0.4) if dim else (GameTheme.GOLD if a == game.human else GameTheme.TEXT))
+		h.add_child(name_label)
+		var bar := ProgressBar.new()
+		bar.show_percentage = false
+		bar.custom_minimum_size = Vector2(150, 12)
+		bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		bar.min_value = 0
+		bar.max_value = maxi(game.start_life, a.life)
+		bar.value = a.life
+		var bg := StyleBoxFlat.new()
+		bg.bg_color = Color(0.03, 0.02, 0.06, 0.9)
+		bg.border_color = GameTheme.GOLD_DIM
+		bg.set_border_width_all(1)
+		bg.set_corner_radius_all(5)
+		bar.add_theme_stylebox_override("background", bg)
+		var fill := StyleBoxFlat.new()
+		var ratio := float(a.life) / float(bar.max_value)
+		fill.bg_color = Color(0.4, 0.78, 0.42) if ratio > 0.5 else (Color(0.9, 0.65, 0.3) if ratio > 0.25 else Color(0.9, 0.35, 0.3))
+		fill.set_corner_radius_all(5)
+		bar.add_theme_stylebox_override("fill", fill)
+		h.add_child(bar)
+		var life_label := Label.new()
+		var delta: int = a.life - int(game.life_before.get(a, a.life))
+		life_label.text = "♥ %d" % a.life + ((" −%d" % -delta) if delta < 0 else (" +%d" % delta if delta > 0 else ""))
+		life_label.custom_minimum_size.x = 58
+		life_label.add_theme_font_override("font", GameTheme.bold_font)
+		life_label.add_theme_font_size_override("font_size", 13)
+		life_label.add_theme_color_override("font_color", Color(0.95, 0.45, 0.4) if delta < 0 else (Color(0.5, 0.88, 0.5) if delta > 0 else GameTheme.TEXT))
+		h.add_child(life_label)
+		var eter_label := Label.new()
+		eter_label.text = "◆ %d" % a.eter
+		eter_label.custom_minimum_size.x = 50
+		eter_label.add_theme_color_override("font_color", Color(0.62, 0.8, 1.0))
+		h.add_child(eter_label)
+		var streak_label := Label.new()
+		streak_label.text = ("%s %d" % ["▲" if a.streak_is_win else "▼", a.streak]) if a.streak > 0 else "—"
+		streak_label.custom_minimum_size.x = 50
+		streak_label.add_theme_color_override("font_color", GameTheme.GOLD if a.streak_is_win and a.streak > 0 else (Color(0.95, 0.5, 0.45) if a.streak > 0 else GameTheme.TEXT_DIM))
+		h.add_child(streak_label)
+		var chip := Label.new()
+		var res := _cycle_result(a)
+		chip.text = res
+		chip.custom_minimum_size.x = 40
+		chip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		chip.add_theme_font_override("font", GameTheme.bold_font)
+		chip.add_theme_color_override("font_color", Color(0.5, 0.88, 0.5) if res == "V" else (Color(0.95, 0.45, 0.4) if res == "D" else GameTheme.TEXT_DIM))
+		h.add_child(chip)
+
+
+## «V», «D», «=» o «—» según la batalla de este ciclo de un adalid.
+func _cycle_result(a: Adalid) -> String:
+	for b in game.last_battles:
+		if not b.adalids.has(a):
+			continue
+		if b.result.get("tie", false):
+			return "="
+		return "V" if b.result.get("winner") == a else "D"
+	return "—"
+
+
+## Frase sobre tu batalla de este ciclo.
+func _cycle_headline() -> String:
+	for b in game.last_battles:
+		if not b.adalids.has(game.human):
+			continue
+		var opp: Adalid = b.adalids[1] if b.adalids[0] == game.human else b.adalids[0]
+		var side := b.adalids.find(game.human)
+		var lost: int = b.result.get("damage", [0, 0])[side]
+		if b.result.get("tie", false):
+			return "Empate con %s: ambos perdéis vida (−%d)." % [opp.display_name, lost]
+		if b.result.get("winner") == game.human:
+			return "Venciste a %s y no pierdes vida." % opp.display_name
+		return "%s te venció: pierdes %d de vida." % [opp.display_name, lost]
+	return "Este ciclo descansaste."
+
+
+## Entrada animada de un panel centrado.
+func _pop_in(panel: Control) -> void:
+	panel.pivot_offset = panel.size / 2.0
+	panel.modulate = Color(1, 1, 1, 0)
+	panel.scale = Vector2(0.88, 0.88)
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(panel, "modulate:a", 1.0, 0.3)
+	tw.tween_property(panel, "scale", Vector2.ONE, 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
 func _build_over_panel() -> Control:
 	var p := PanelContainer.new()
 	p.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	p.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	p.grow_vertical = Control.GROW_DIRECTION_BOTH
-	p.custom_minimum_size.x = 520
+	p.custom_minimum_size.x = 700
 	var s := GameTheme.panel_style()
 	s.bg_color = Color(0.05, 0.04, 0.09, 0.97)
 	s.border_color = GameTheme.GOLD
@@ -1207,14 +1375,7 @@ func _build_over_panel() -> Control:
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD
 	box.add_child(l)
-	var table_label := RichTextLabel.new()
-	table_label.name = "Table"
-	table_label.bbcode_enabled = true
-	table_label.fit_content = true
-	table_label.scroll_active = false
-	table_label.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
-	table_label.add_theme_font_size_override("normal_font_size", 15)
-	box.add_child(table_label)
+	box.add_child(_standings_box())
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	box.add_child(row)
@@ -1377,8 +1538,14 @@ func _enter_state() -> void:
 			if not game.last_battles.is_empty():
 				board3d.sync(game.last_battles[-1].board.cells, false)
 			(panels[Game.State.CYCLE_END].find_child("Title", true, false) as Label).text = "Fin del ciclo %d" % game.cycle
+			var headline: Label = panels[Game.State.CYCLE_END].find_child("Headline", true, false)
+			headline.text = _cycle_headline()
+			var mine := _cycle_result(game.human)
+			headline.add_theme_color_override("font_color", Color(0.5, 0.88, 0.5) if mine == "V" else (Color(0.95, 0.45, 0.4) if mine == "D" else GameTheme.TEXT_DIM))
+			_fill_standings(panels[Game.State.CYCLE_END].find_child("Rows", true, false))
 		Game.State.OVER:
 			var res: Label = panels[Game.State.OVER].find_child("Result", true, false)
+			_fill_standings(panels[Game.State.OVER].find_child("Rows", true, false))
 			var w := game.winner()
 			if game.demiurge_wins:
 				res.text = "Los últimos adalides cayeron a la vez: gana el Demiurgo."
@@ -1390,6 +1557,8 @@ func _enter_state() -> void:
 				res.text = "Has sido eliminado. Gana %s." % (w.display_name if w != null else "nadie")
 				_celebrate("Gana %s" % (w.display_name if w != null else "nadie"), Color(0.9, 0.5, 0.5), false)
 	_refresh()
+	if game.state in [Game.State.CYCLE_END, Game.State.OVER]:
+		_pop_in(panels[game.state])
 
 
 func _update_deck_label(hint := "") -> void:
@@ -1937,7 +2106,7 @@ func _battle_intro() -> void:
 		Fx.dust_puff(board3d, piece.position, Vector3.FORWARD)
 	await get_tree().create_timer(0.6, false).timeout
 	_celebrate("¡A luchar!", Color(1, 0.5, 0.4), true)
-	await get_tree().create_timer(0.5, false).timeout
+	await get_tree().create_timer(2.6, false).timeout
 	battle_playing = false
 	if game.state == Game.State.BATTLE and game.current_battle == battle:
 		if tutorial != null and tutorial.pause_first_battle():
@@ -1988,6 +2157,11 @@ func _play_round() -> void:
 		return
 	battle_playing = true
 	var battle := game.current_battle
+	_celebrate("Asalto %d" % battle.round_no, GameTheme.GOLD, false, 0.3)
+	await get_tree().create_timer(0.55, false).timeout
+	if game.current_battle != battle or game.state != Game.State.BATTLE:
+		battle_playing = false
+		return
 	battle.commit_round()
 	var evs := battle.events.duplicate()
 	_refresh()
@@ -2000,8 +2174,9 @@ func _play_round() -> void:
 		_refresh_battle_hud(battle)
 		battle_status.text = "Batalla terminada."
 		_announce_battle(battle)
-		await get_tree().create_timer(1.6, false).timeout # Se ve la vida bajar antes de cambiar de fase.
-		if game != g or game.state != g.state:
+		var st := game.state
+		await get_tree().create_timer(3.4, false).timeout # La celebración termina antes del resumen.
+		if game != g or game.state != st:
 			return
 		_enter_state()
 	else:
@@ -2040,6 +2215,8 @@ func _animate_events(battle: Battle, evs: Array) -> void:
 			return
 		var ch: Champion = e.get("ch", null)
 		var piece: ChampionPiece = board3d.piece_of(ch) if ch != null else null
+		if e["type"] in ["damage", "heal", "death"]:
+			_refresh_battle_hp(battle)
 		match e["type"]:
 			"move":
 				if piece != null:
@@ -2214,7 +2391,9 @@ func _screen_flash(color: Color) -> void:
 
 
 ## Cartel grande con partículas: victoria/derrota de una batalla y fin de la partida.
-func _celebrate(text: String, color: Color, big: bool) -> void:
+func _celebrate(text: String, color: Color, big: bool, hold := 1.4) -> void:
+	if _banner_tween != null and _banner_tween.is_valid():
+		_banner_tween.kill()
 	banner.text = text
 	banner.add_theme_color_override("font_color", color)
 	banner.visible = true
@@ -2225,6 +2404,7 @@ func _celebrate(text: String, color: Color, big: bool) -> void:
 	banner.position = (fx_layer.size - banner.size) / 2.0
 	banner.add_theme_color_override("font_outline_color", Color(color.r * 0.3, color.g * 0.3, color.b * 0.3, 0.95) if big else Color(0, 0, 0, 0.9))
 	var tw := create_tween()
+	_banner_tween = tw
 	tw.set_parallel(true)
 	tw.tween_property(banner, "modulate:a", 1.0, 0.2)
 	tw.tween_property(banner, "scale", Vector2.ONE * (1.25 if big else 1.0), 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
@@ -2234,7 +2414,7 @@ func _celebrate(text: String, color: Color, big: bool) -> void:
 			tw.chain().tween_property(banner, "scale", Vector2.ONE * 1.06, 0.35).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 			tw.chain().tween_property(banner, "scale", Vector2.ONE, 0.35).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	else:
-		tw.chain().tween_interval(1.4)
+		tw.chain().tween_interval(hold)
 	tw.chain().tween_property(banner, "modulate:a", 0.0, 0.5)
 	tw.chain().tween_callback(func() -> void: banner.visible = false)
 	if big:
@@ -2304,14 +2484,24 @@ func _refresh_battle_hud(battle: Battle) -> void:
 	for side in 2:
 		var a := battle.adalids[side]
 		battle_names[side].text = ("Tú" if a == game.human else a.display_name)
-		var alive := battle.board.alive_count(side)
-		battle_alive[side].text = "⚔ %d/%d en pie" % [alive, battle.squad_size[side]]
+	_refresh_battle_hp(battle)
+
+
+## Vida de los adalides (número) y vida total de sus campeones (barra). Se llama tras cada golpe.
+func _refresh_battle_hp(battle: Battle) -> void:
+	for side in 2:
+		var a := battle.adalids[side]
 		battle_lives[side].text = "♥ %d" % a.life
+		var alive := battle.board.alive_count(side)
+		battle_alive[side].text = "⚔ %d/%d" % [alive, battle.squad_size[side]]
+		var hp := battle.squad_hp(side)
+		var hp_max := maxi(battle.squad_hp_max[side], 1)
+		battle_hp[side].text = "%d/%d" % [hp, hp_max]
 		var bar := battle_bars[side]
-		bar.max_value = maxi(game.start_life, a.life)
-		if bar.value != a.life:
+		bar.max_value = hp_max
+		if bar.value != hp:
 			var tw := create_tween()
-			tw.tween_property(bar, "value", float(a.life), 0.6).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+			tw.tween_property(bar, "value", float(hp), 0.45).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 
 
 # ---------------------------------------------------------------- refresco general
@@ -2348,8 +2538,6 @@ func _refresh() -> void:
 			color, "► " if a == game.human else "", a.display_name, a.life, a.eter, a.base_count(), a.cuartel_capacity(), a.battle_size(), a.dice_count()])
 	lines.append("[/table]")
 	standings.text = "\n".join(lines)
-	for st in [Game.State.CYCLE_END, Game.State.OVER]:
-		(panels[st].find_child("Table", true, false) as RichTextLabel).text = standings.text
 	var text := "\n".join(game.log)
 	if game.current_battle != null:
 		text += "\n" + "\n".join(game.current_battle.log)
@@ -2495,7 +2683,11 @@ func _screenshot_tour(dir: String) -> void:
 			await get_tree().process_frame
 		await get_tree().create_timer(0.6, false).timeout
 		await _snap(dir.path_join("7_resultado.png"))
-		await get_tree().create_timer(2.4, false).timeout
+		var waited := 0.0
+		while not panels[Game.State.CYCLE_END].visible and waited < 8.0:
+			waited += get_process_delta_time()
+			await get_tree().process_frame
+		await get_tree().create_timer(0.8, false).timeout
 		await _snap(dir.path_join("8_fin_ciclo.png"))
 	get_tree().quit()
 

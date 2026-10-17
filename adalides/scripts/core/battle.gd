@@ -16,6 +16,7 @@ var log: PackedStringArray = []
 var round_no: int = 0
 var max_rounds: int = Rules.ROUNDS_PER_BATTLE # 0 = hasta que un bando se quede sin campeones.
 var squad_size: Array[int] = [0, 0] # Campeones con los que empezó cada lado.
+var squad_hp_max: Array[int] = [0, 0] # Vida total de los campeones de cada lado al empezar.
 var battle_number: int = 1 # Batallas realizadas hasta ahora (incluida esta).
 var adalids: Array[Adalid] = []
 var elem_tiers: Array[Dictionary] = [{}, {}]
@@ -94,6 +95,18 @@ func start() -> void:
 		if t != "":
 			log_line("Tiers de %s: %s" % [adalids[side].display_name, t])
 		_start_effects(side)
+	for side in 2:
+		squad_hp_max[side] = 0
+		for ch in board.champions(side):
+			squad_hp_max[side] += ch.max_hp()
+
+
+## Vida que les queda entre todos a los campeones vivos de un lado.
+func squad_hp(side: int) -> int:
+	var total := 0
+	for ch in board.champions(side):
+		total += maxi(ch.hp, 0)
+	return total
 
 
 func _start_effects(side: int) -> void:
