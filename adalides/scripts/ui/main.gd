@@ -1878,7 +1878,7 @@ func _refresh_market() -> void:
 	_show_detail(market_detail, selected_card if game.market.has(selected_card) else null)
 	var block := _buy_block_reason(selected_card) if selected_card != null and game.market.has(selected_card) else ""
 	buy_button.disabled = table_busy or selected_card == null or not game.market.has(selected_card) or block != ""
-	buy_button.text = "Comprar" if selected_card == null else "Comprar · %d" % selected_card.cost
+	buy_button.text = "Elige una carta de la mesa" if selected_card == null else "Comprar · %d" % selected_card.cost
 	buy_button.icon = null if selected_card == null else Icons.eter()
 	market_reason.text = block
 	market_reason.visible = block != ""
