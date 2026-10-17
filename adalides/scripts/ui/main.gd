@@ -15,8 +15,8 @@ const AUTO_ROUND_SECONDS := 2.0
 const MARKET_SECONDS := 60
 const LINEUP_SECONDS := 30
 const DRAG_THRESHOLD := 8.0
-const HAND_SCALE := 0.85
-const HAND_CARD_W := 170.0
+const HAND_HOVER_SCALE := 1.3
+const HAND_HOVER_RAISE := 70.0
 
 var game: Game
 var board3d: Board3D
@@ -60,7 +60,7 @@ var phase_time: Label
 var timer_row: HBoxContainer
 var log_panel: PanelContainer
 var hand_panel: Control
-var hand_box: HBoxContainer
+var hand_box: Control
 var skills_panel: PanelContainer
 var skills_box: VBoxContainer
 var help_panel: PanelContainer
@@ -385,17 +385,16 @@ func _build_ui() -> void:
 	hand_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	hand_panel.offset_left = 12
 	hand_panel.offset_right = -356
-	hand_panel.offset_top = -250
-	hand_panel.offset_bottom = -6
+	hand_panel.offset_top = -262
+	hand_panel.offset_bottom = -14
 	hand_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hand_panel.visible = false
 	root.add_child(hand_panel)
-	hand_box = HBoxContainer.new()
+	hand_box = Control.new()
 	hand_box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	hand_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	hand_box.add_theme_constant_override("separation", -34)
 	hand_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hand_panel.add_child(hand_box)
+	hand_panel.resized.connect(_layout_hand)
 
 	# Menú: pantalla inicial y pausa.
 	menu_panel = Control.new()
@@ -1486,7 +1485,7 @@ func _refresh_hand() -> void:
 		c.queue_free()
 	var h := game.human
 	for ch in h.cuartel:
-		var cv := CardView.new()
+		var cv := HandCard.new()
 		var extra := ""
 		if game.state == Game.State.DRAFT:
 			extra = "en tu cuartel"
@@ -1495,12 +1494,7 @@ func _refresh_hand() -> void:
 		elif game.state == Game.State.LINEUP:
 			extra = "en el tablero ✔" if lineup.values().has(ch) else "en la mano"
 		cv.setup(ch.data, ch, extra)
-		cv.custom_minimum_size.x = HAND_CARD_W
 		cv.selected = ch == selected_cuartel or ch == pending_card
-		cv.size_flags_vertical = Control.SIZE_SHRINK_END
-		cv.scale = Vector2(HAND_SCALE, HAND_SCALE)
-		# El pivote va en el borde inferior central para que la carta crezca hacia arriba.
-		cv.resized.connect(func() -> void: cv.pivot_offset = Vector2(cv.size.x / 2.0, cv.size.y))
 		cv.hovered.connect(_on_hand_hover)
 		cv.unhovered.connect(_on_hand_unhover)
 		cv.pressed.connect(func() -> void:
@@ -1517,11 +1511,35 @@ func _refresh_hand() -> void:
 				if pending_card != null:
 					_begin_drag({ "kind": "cuartel_card", "champion": ch }, Icons.archetype(ch.data.archetype), ch.data.display_name))
 		hand_box.add_child(cv)
-	var n := h.cuartel.size()
-	if n > 1:
-		var visible_w := HAND_CARD_W * HAND_SCALE
-		var pitch := minf(visible_w + 10.0, (hand_panel.size.x - visible_w) / float(n - 1))
-		hand_box.add_theme_constant_override("separation", int(pitch - HAND_CARD_W))
+	_layout_hand()
+
+
+## Abanico: las cartas se reparten en arco, inclinadas hacia los lados y solapadas si no caben.
+func _layout_hand() -> void:
+	var cards: Array[HandCard] = []
+	for c in hand_box.get_children():
+		if c is HandCard and not c.is_queued_for_deletion():
+			cards.append(c)
+	var n := cards.size()
+	if n == 0:
+		return
+	var panel_w := hand_panel.size.x
+	var pitch := minf(HandCard.W + 12.0, (panel_w - HandCard.W - 40.0) / float(maxi(n - 1, 1)))
+	var mid := (n - 1) / 2.0
+	var base_y := hand_panel.size.y - HandCard.H - 6.0
+	for i in n:
+		var c := cards[i]
+		var off := i - mid
+		var pos := Vector2(panel_w / 2.0 + off * pitch - HandCard.W / 2.0, base_y + off * off * 4.0)
+		var rot := clampf(off * 3.5, -14.0, 14.0)
+		c.base_position = pos
+		c.base_rotation = rot
+		c.z_index = i
+		if c.get_meta("hovered", false):
+			continue
+		c.position = pos
+		c.rotation_degrees = rot
+		c.scale = Vector2.ONE
 
 
 ## En la alineación la mano no se reconstruye: solo cambian la marca y el texto.
@@ -1530,7 +1548,7 @@ func _mark_hand() -> void:
 		_refresh_hand()
 		return
 	for cv in hand_box.get_children():
-		var c := cv as CardView
+		var c := cv as HandCard
 		if c == null or c.champion == null:
 			_refresh_hand()
 			return
@@ -1538,22 +1556,30 @@ func _mark_hand() -> void:
 		c.set_extra("en el tablero ✔" if lineup.values().has(c.champion) else "en la mano")
 
 
-## La carta crece desde su borde inferior (pivote abajo); nunca se mueve su
-## posición, así un hover/unhover desparejado no la desplaza.
-func _on_hand_hover(cv: CardView) -> void:
+## Al pasar el ratón la carta se endereza, sube y crece por encima de las demás;
+## al salir vuelve a su pose del abanico. Nunca se desplaza su pose base.
+func _on_hand_hover(cv: HandCard) -> void:
 	if not is_instance_valid(cv):
 		return
-	cv.z_index = 10
+	cv.set_meta("hovered", true)
+	cv.z_index = 50
 	var tw := create_tween()
-	tw.tween_property(cv, "scale", Vector2(1.12, 1.12), 0.12).set_trans(Tween.TRANS_SINE)
+	tw.set_parallel(true)
+	tw.tween_property(cv, "scale", Vector2.ONE * HAND_HOVER_SCALE, 0.14).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(cv, "rotation_degrees", 0.0, 0.14).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(cv, "position", cv.base_position + Vector2(0, -HAND_HOVER_RAISE), 0.14).set_trans(Tween.TRANS_SINE)
 
 
-func _on_hand_unhover(cv: CardView) -> void:
+func _on_hand_unhover(cv: HandCard) -> void:
 	if not is_instance_valid(cv):
 		return
-	cv.z_index = 0
+	cv.set_meta("hovered", false)
+	cv.z_index = hand_box.get_children().find(cv)
 	var tw := create_tween()
-	tw.tween_property(cv, "scale", Vector2(HAND_SCALE, HAND_SCALE), 0.12).set_trans(Tween.TRANS_SINE)
+	tw.set_parallel(true)
+	tw.tween_property(cv, "scale", Vector2.ONE, 0.14).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(cv, "rotation_degrees", cv.base_rotation, 0.14).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(cv, "position", cv.base_position, 0.14).set_trans(Tween.TRANS_SINE)
 
 
 func _finish_market() -> void:

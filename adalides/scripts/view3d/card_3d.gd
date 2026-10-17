@@ -53,17 +53,18 @@ static func flat_sprite(tex: Texture2D, pixel_size: float, pos: Vector3, priorit
 static func flat_label(text: String, size: int, color: Color, pos: Vector3, priority: int, width := 0.0) -> Label3D:
 	var l := Label3D.new()
 	l.text = text
-	l.font_size = size
-	l.pixel_size = TEXT_PX
-	l.outline_size = int(size * 0.22)
+	l.font_size = size * 2 # El doble de resolución en el atlas: letra nítida de cerca.
+	l.pixel_size = TEXT_PX / 2.0
+	l.outline_size = int(size * 0.4)
 	l.outline_modulate = Color(0, 0, 0, 0.85)
 	l.modulate = color
 	l.rotation_degrees = Vector3(-90, 180, 0)
 	l.position = pos
 	l.render_priority = priority
 	l.font = GameTheme.bold_font
+	l.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	if width > 0.0:
-		l.width = width
+		l.width = width * 2.0
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD
 	return l
 
@@ -154,7 +155,7 @@ func setup(p_card: ChampionData) -> void:
 		_face.add_child(flat_label("★ Héroe", 30, Icons.HERO_COLOR, tex_pos(118, 420), 4))
 	_face.add_child(flat_label("◆ %d" % card.cost, 40, Color(0.62, 0.8, 1.0), tex_pos(408, 420), 4))
 	# Banda inferior: poder y ataque / vida.
-	var power := flat_label(String(card.power.get("name", "")), 30, Color(1.0, 0.88, 0.6), tex_pos(256, 616), 3, 420)
+	var power := flat_label(String(card.power.get("name", "")), 34, Color(1.0, 0.88, 0.6), tex_pos(256, 616), 3, 420)
 	power.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_face.add_child(power)
 	_face.add_child(flat_label("⚔ %d" % card.attack, 44, Color(1, 0.55, 0.45), tex_pos(118, 664), 3))
