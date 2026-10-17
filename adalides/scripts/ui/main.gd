@@ -74,6 +74,8 @@ var setup_players: int = 6
 var setup_box: VBoxContainer
 var mode_text: Label
 var lineup_go_button: Button
+var lineup_auto_button: Button
+var lineup_clear_button: Button
 var market_done_button: Button
 var next_cycle_button: Button
 var paused_menu: bool = false
@@ -921,6 +923,8 @@ func _build_market_panel() -> Control:
 		b.custom_minimum_size = Vector2(118, 36)
 		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		b.pressed.connect(func() -> void:
+			if not _tut_can("upgrade_battle" if track == Adalid.Track.BATTLE else "upgrade_other"):
+				return
 			game.human_upgrade(track)
 			_refresh_market())
 		row.add_child(b)
@@ -985,14 +989,20 @@ func _build_lineup_panel() -> Control:
 	buttons.add_theme_constant_override("separation", 6)
 	box.add_child(buttons)
 	var auto := Button.new()
+	lineup_auto_button = auto
 	auto.text = "Auto"
 	auto.pressed.connect(func() -> void:
+		if not _tut_can("lineup_auto"):
+			return
 		lineup = Game.auto_lineup(game.human)
 		_refresh_lineup())
 	buttons.add_child(auto)
 	var clear := Button.new()
+	lineup_clear_button = clear
 	clear.text = "Vaciar"
 	clear.pressed.connect(func() -> void:
+		if not _tut_can("lineup_clear"):
+			return
 		lineup.clear()
 		_refresh_lineup())
 	buttons.add_child(clear)
@@ -1002,7 +1012,9 @@ func _build_lineup_panel() -> Control:
 	go.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	go.custom_minimum_size = Vector2(0, 44)
 	GameTheme.primary_button(go)
-	go.pressed.connect(func() -> void: _on_lineup_done(false))
+	go.pressed.connect(func() -> void:
+		if _tut_can("lineup_go"):
+			_on_lineup_done(false))
 	buttons.add_child(go)
 	return block
 
@@ -1070,7 +1082,9 @@ func _build_cycle_end_panel() -> Control:
 	next.text = "Siguiente ciclo →"
 	next.custom_minimum_size = Vector2(0, 46)
 	GameTheme.primary_button(next)
-	next.pressed.connect(_next_cycle)
+	next.pressed.connect(func() -> void:
+		if _tut_can("next_cycle"):
+			_next_cycle())
 	box.add_child(next)
 	return p
 
@@ -1239,6 +1253,11 @@ func _enter_state() -> void:
 			_update_deck_label("(pulsa para repartir)")
 			_refresh_draft()
 		Game.State.MARKET:
+			if tutorial != null and game.cycle == 1:
+				# El tutorial pelea antes de comprar: el primer mercado se salta sin mostrarlo.
+				game.finish_market()
+				_enter_state()
+				return
 			board3d.clear_pieces()
 			_start_phase_timer(MARKET_SECONDS)
 			_refresh_market()
@@ -1328,8 +1347,33 @@ func _tutorial_allows(card: ChampionData) -> bool:
 	return tutorial == null or tutorial.allows(card)
 
 
+## En el tutorial solo se permiten las acciones del paso actual.
+func _tut_can(action: String) -> bool:
+	return tutorial == null or tutorial.can(action)
+
+
+## Deshabilita los botones de las acciones que el paso del tutorial no permite.
+func _tut_apply_locks() -> void:
+	if tutorial == null:
+		return
+	# Botones cuyo estado natural ya calculó _refresh_market: solo se añaden bloqueos.
+	buy_button.disabled = buy_button.disabled or not _tut_can("buy")
+	refresh_button.disabled = refresh_button.disabled or not _tut_can("refresh")
+	sell_button.disabled = sell_button.disabled or not _tut_can("sell")
+	for track in upgrade_buttons:
+		var b: Button = upgrade_buttons[track]
+		b.disabled = b.disabled or not _tut_can("upgrade_battle" if track == Adalid.Track.BATTLE else "upgrade_other")
+	market_done_button.disabled = not _tut_can("market_done")
+	lineup_auto_button.disabled = not _tut_can("lineup_auto")
+	lineup_clear_button.disabled = not _tut_can("lineup_clear")
+	lineup_go_button.disabled = not _tut_can("lineup_go")
+	pause_button.disabled = not _tut_can("battle_pause")
+	step_button.disabled = not _tut_can("battle_step")
+	next_cycle_button.disabled = not _tut_can("next_cycle")
+
+
 func _on_deck_clicked() -> void:
-	if game.state != Game.State.DRAFT or table.dealt or table_busy:
+	if game.state != Game.State.DRAFT or table.dealt or table_busy or not _tut_can("deal"):
 		return
 	table_busy = true
 	_update_deck_label()
@@ -1363,16 +1407,16 @@ func _on_table_card_pressed(c3d: Card3D) -> void:
 	table.select(c3d)
 	if game.state == Game.State.DRAFT:
 		_refresh_draft()
-		if game.draft_current() == game.human and game.human.can_add(card) and _tutorial_allows(card):
+		if game.draft_current() == game.human and game.human.can_add(card) and _tutorial_allows(card) and _tut_can("take"):
 			_begin_drag({ "kind": "table_card", "card": card, "card3d": c3d }, Icons.archetype(card.archetype), card.display_name)
 	elif game.state == Game.State.MARKET:
 		_refresh_market()
-		if game.human.can_add(card) and game.human.can_pay(card.cost):
+		if game.human.can_add(card) and game.human.can_pay(card.cost) and _tut_can("buy"):
 			_begin_drag({ "kind": "table_card", "card": card, "card3d": c3d }, Icons.archetype(card.archetype), card.display_name)
 
 
 func _on_take_card() -> void:
-	if selected_card == null or not _tutorial_allows(selected_card) or not game.human_draft_pick(selected_card):
+	if selected_card == null or not _tutorial_allows(selected_card) or not _tut_can("take") or not game.human_draft_pick(selected_card):
 		return
 	var card := selected_card
 	var c3d := selected_card3d
@@ -1461,9 +1505,13 @@ func _refresh_hand() -> void:
 		cv.unhovered.connect(_on_hand_unhover)
 		cv.pressed.connect(func() -> void:
 			if game.state == Game.State.MARKET:
+				if not _tut_can("sell"):
+					return
 				selected_cuartel = ch
 				_refresh_market()
 			elif game.state == Game.State.LINEUP:
+				if not _tut_can("lineup_drag"):
+					return
 				pending_card = null if pending_card == ch else ch
 				_refresh_lineup()
 				if pending_card != null:
@@ -1509,7 +1557,7 @@ func _on_hand_unhover(cv: CardView) -> void:
 
 
 func _finish_market() -> void:
-	if game.state != Game.State.MARKET:
+	if game.state != Game.State.MARKET or not _tut_can("market_done"):
 		return
 	phase_left = 0.0
 	if table_busy:
@@ -1519,7 +1567,7 @@ func _finish_market() -> void:
 
 
 func _on_buy_card() -> void:
-	if selected_card == null or table_busy or not game.human_buy(selected_card):
+	if selected_card == null or table_busy or not _tut_can("buy") or not game.human_buy(selected_card):
 		return
 	var card := selected_card
 	var c3d := selected_card3d
@@ -1533,14 +1581,14 @@ func _on_buy_card() -> void:
 
 
 func _on_refresh_market() -> void:
-	if table_busy or not game.human_refresh_market():
+	if table_busy or not _tut_can("refresh") or not game.human_refresh_market():
 		return
 	selected_card = null
 	_deal_market()
 
 
 func _on_sell() -> void:
-	if selected_cuartel == null:
+	if selected_cuartel == null or not _tut_can("sell"):
 		return
 	game.human_sell(selected_cuartel)
 	selected_cuartel = null
@@ -1550,7 +1598,7 @@ func _on_sell() -> void:
 # ---------------------------------------------------------------- alineación
 
 func _on_tile_pressed(pos: Vector2i) -> void:
-	if game.state != Game.State.LINEUP or Board.side_of(pos) != 0:
+	if game.state != Game.State.LINEUP or Board.side_of(pos) != 0 or not _tut_can("lineup_drag"):
 		return
 	var key := Vector2i(pos.x, Board.row_of(pos))
 	if pending_card != null:
@@ -1771,6 +1819,8 @@ func _battle_loop(token: int) -> void:
 
 
 func _toggle_pause() -> void:
+	if not _tut_can("battle_pause"):
+		return
 	battle_paused = not battle_paused
 	if battle_paused:
 		_auto_token += 1
@@ -1780,7 +1830,7 @@ func _toggle_pause() -> void:
 
 
 func _step_round() -> void:
-	if battle_playing or game.state != Game.State.BATTLE:
+	if battle_playing or game.state != Game.State.BATTLE or not _tut_can("battle_step"):
 		return
 	await _play_round()
 
@@ -2063,6 +2113,7 @@ func _refresh() -> void:
 		return
 	for st in panels:
 		panels[st].visible = st == game.state
+	_tut_apply_locks()
 	phase_title.text = {
 		Game.State.DRAFT: "Ciclo %d · Draft" % game.cycle,
 		Game.State.MARKET: "Ciclo %d · Mercado" % game.cycle,
@@ -2272,8 +2323,6 @@ func _tutorial_tour(dir: String) -> void:
 					table.select(selected_card3d)
 					_on_take_card()
 			3:
-				t._on_next()
-			4:
 				if game.state == Game.State.LINEUP:
 					if lineup.size() < game.human.cuartel.size():
 						var col := 1
@@ -2283,16 +2332,16 @@ func _tutorial_tour(dir: String) -> void:
 						_refresh_lineup()
 						await get_tree().create_timer(0.5, false).timeout
 						snap_i += 1
-						await _snap(dir.path_join("t%02d_paso05_colocado.png" % snap_i))
+						await _snap(dir.path_join("t%02d_paso04_colocado.png" % snap_i))
 					else:
 						_on_lineup_done(false)
-			5, 6, 7:
+			4, 5, 6:
 				if game.state == Game.State.BATTLE and battle_paused:
 					_step_round()
-			8:
+			7:
 				if game.state == Game.State.CYCLE_END:
 					_next_cycle()
-			9:
+			8:
 				if game.state == Game.State.MARKET and not game.market.is_empty():
 					for card in game.market:
 						if game.human.can_pay(card.cost) and game.human.can_add(card):
@@ -2301,17 +2350,17 @@ func _tutorial_tour(dir: String) -> void:
 							table.select(selected_card3d)
 							_on_buy_card()
 							break
-			10:
+			9:
 				if game.state == Game.State.MARKET:
 					game.human_upgrade(Adalid.Track.BATTLE)
 					_refresh_market()
-			11:
+			10:
 				if game.state == Game.State.MARKET:
 					_finish_market()
-			12:
+			11:
 				if game.state == Game.State.LINEUP:
 					_on_lineup_done(false)
-			13:
+			12:
 				t._on_next()
 	print("TUTORIAL terminado: finished=%s, pasos capturados=%d, guard=%d" % [str(t != null and t.finished), snap_i, guard])
 	await get_tree().create_timer(0.5, false).timeout
