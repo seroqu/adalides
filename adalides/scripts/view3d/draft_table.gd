@@ -11,7 +11,13 @@ const SPACING_X := 1.22
 const SPACING_Z := 1.8
 const HOVER_Y := 0.9
 
+const PLAQUE_PX := 0.0036 # Unidades por píxel de la placa del mazo (512 px ≈ 1.85 u).
+
 var deck_node: Node3D
+var _plaque: Node3D
+var _count_label: Label3D
+var _hint_label: Label3D
+var _last_count: int = -1
 var deco: Node3D # Decorado del draft: sello, braseros, motas.
 var _sigils: Array[Node3D] = []
 var _flames: Array[OmniLight3D] = []
@@ -42,16 +48,7 @@ func _ready() -> void:
 	top.rotation_degrees = Vector3(-90, 0, 0)
 	top.position = Vector3(0.008 * 7, 0.03 * 7 + 0.017, -0.008 * 7)
 	deck_node.add_child(top)
-	var label := Label3D.new()
-	label.text = "Mazo del demiurgo\n(pulsa para repartir)"
-	label.font_size = 40
-	label.pixel_size = 0.0035
-	label.outline_size = 10
-	label.font = GameTheme.bold_font
-	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	label.position = Vector3(0.45, 1.45, 0)
-	label.name = "DeckLabel"
-	deck_node.add_child(label)
+	_build_plaque()
 	var body := StaticBody3D.new()
 	var shape := CollisionShape3D.new()
 	var cs := BoxShape3D.new()
@@ -65,8 +62,74 @@ func _ready() -> void:
 	deck_node.add_child(body)
 
 
-func set_deck_label(text: String) -> void:
-	(deck_node.get_node("DeckLabel") as Label3D).text = text
+## Placa sobre el mazo: título, número de cartas grande y una pista opcional.
+func _build_plaque() -> void:
+	_plaque = Node3D.new()
+	_plaque.name = "DeckPlaque"
+	_plaque.position = Vector3(0.3, 1.95, 0.0)
+	deck_node.add_child(_plaque)
+	var glow := Sprite3D.new()
+	glow.texture = Fx.tex("circle_05")
+	glow.modulate = Color(1.0, 0.8, 0.4, 0.28)
+	glow.pixel_size = 0.009
+	glow.scale = Vector3(1.15, 0.6, 1.0)
+	glow.position.z = -0.02
+	glow.no_depth_test = true
+	glow.render_priority = 6
+	_plaque.add_child(glow)
+	var plate := Sprite3D.new()
+	plate.texture = Icons.deck_plaque()
+	plate.pixel_size = PLAQUE_PX
+	plate.no_depth_test = true
+	plate.render_priority = 7
+	plate.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	_plaque.add_child(plate)
+	_plaque.add_child(_plaque_label("MAZO DEL DEMIURGO", 22, GameTheme.GOLD, GameTheme.title_font, _plaque_pos(300, 44)))
+	_count_label = _plaque_label("0", 78, Color.WHITE, GameTheme.title_font, _plaque_pos(250, 128), HORIZONTAL_ALIGNMENT_RIGHT)
+	_plaque.add_child(_count_label)
+	var word := _plaque_label("cartas", 30, GameTheme.TEXT_DIM, GameTheme.bold_font, _plaque_pos(262, 138), HORIZONTAL_ALIGNMENT_LEFT)
+	_plaque.add_child(word)
+	_hint_label = _plaque_label("", 20, Color(0.95, 0.82, 0.5), GameTheme.body_font, _plaque_pos(300, 186))
+	_plaque.add_child(_hint_label)
+
+
+func _plaque_pos(px: float, py: float) -> Vector3:
+	return Vector3((px - 256.0) * PLAQUE_PX, (112.0 - py) * PLAQUE_PX, 0.01)
+
+
+func _plaque_label(text: String, size: int, color: Color, font: Font, pos: Vector3, align := HORIZONTAL_ALIGNMENT_CENTER) -> Label3D:
+	var l := Label3D.new()
+	l.text = text
+	l.font = font
+	l.font_size = size * 2 # Doble resolución: letra nítida como en las cartas.
+	l.pixel_size = PLAQUE_PX / 2.0
+	l.modulate = color
+	l.outline_size = int(size * 0.35)
+	l.outline_modulate = Color(0, 0, 0, 0.8)
+	l.horizontal_alignment = align
+	l.position = pos
+	l.no_depth_test = true
+	l.render_priority = 8
+	l.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	return l
+
+
+## Actualiza el número de cartas (con un latido si cambia) y la pista bajo él.
+func set_deck_count(count: int, hint := "") -> void:
+	_hint_label.text = hint
+	_hint_label.visible = hint != ""
+	if count == _last_count:
+		return
+	var changed := _last_count >= 0
+	_last_count = count
+	_count_label.text = str(count)
+	if not changed:
+		return
+	var tw := create_tween()
+	tw.tween_property(_count_label, "scale", Vector3.ONE * 1.35, 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(_count_label, "modulate", GameTheme.GOLD, 0.12)
+	tw.tween_property(_count_label, "scale", Vector3.ONE, 0.35).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(_count_label, "modulate", Color.WHITE, 0.45)
 
 
 func slot_position(index: int, total: int) -> Vector3:
@@ -168,6 +231,11 @@ func _process(delta: float) -> void:
 		return
 	_time += delta
 	Deco.animate(_sigils, _flames, _time, delta)
+	# La placa mira siempre a la cámara y flota con suavidad.
+	var cam := get_viewport().get_camera_3d()
+	if cam != null and _plaque != null:
+		_plaque.global_transform.basis = cam.global_transform.basis
+		_plaque.position.y = 1.95 + sin(_time * 1.3) * 0.03
 
 
 func _build_deco() -> void:

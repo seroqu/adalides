@@ -1249,7 +1249,7 @@ func _enter_state() -> void:
 	match game.state:
 		Game.State.DRAFT:
 			board3d.clear_pieces()
-			_update_deck_label("(pulsa para repartir)")
+			_update_deck_label("Pulsa el mazo para repartir")
 			_refresh_draft()
 		Game.State.MARKET:
 			if tutorial != null and game.cycle == 1:
@@ -1291,8 +1291,8 @@ func _enter_state() -> void:
 	_refresh()
 
 
-func _update_deck_label(extra := "") -> void:
-	table.set_deck_label("Mazo del demiurgo · %d cartas%s" % [game.deck.size(), ("\n" + extra) if extra != "" else ""])
+func _update_deck_label(hint := "") -> void:
+	table.set_deck_count(game.deck.size(), hint)
 
 
 # ---------------------------------------------------------------- mesa: draft

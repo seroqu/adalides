@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="224" viewBox="0 0 512 224">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b1628" stop-opacity="0.96"/>
+      <stop offset="1" stop-color="#0b0912" stop-opacity="0.96"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f1d58a"/>
+      <stop offset="0.5" stop-color="#c9a24a"/>
+      <stop offset="1" stop-color="#8a6a2a"/>
+    </linearGradient>
+  </defs>
+  <!-- Placa -->
+  <rect x="10" y="10" width="492" height="204" rx="26" fill="url(#bg)" stroke="url(#gold)" stroke-width="6"/>
+  <rect x="22" y="22" width="468" height="180" rx="18" fill="none" stroke="#c9a24a" stroke-opacity="0.45" stroke-width="2"/>
+  <!-- Adornos de esquina -->
+  <g fill="none" stroke="#e5c56d" stroke-width="3" stroke-linecap="round">
+    <path d="M34 60 V38 a4 4 0 0 1 4 -4 H60"/>
+    <path d="M478 60 V38 a4 4 0 0 0 -4 -4 H452"/>
+    <path d="M34 164 V186 a4 4 0 0 0 4 4 H60"/>
+    <path d="M478 164 V186 a4 4 0 0 1 -4 4 H452"/>
+  </g>
+  <!-- Rombo bajo el título -->
+  <g transform="translate(300 74)" fill="#e5c56d">
+    <path d="M-7 0 L0 -7 L7 0 L0 7 Z"/>
+    <rect x="-70" y="-1" width="56" height="2" opacity="0.7"/>
+    <rect x="14" y="-1" width="56" height="2" opacity="0.7"/>
+  </g>
+  <!-- Pila de cartas -->
+  <g transform="translate(44 58)" stroke-linejoin="round">
+    <rect x="18" y="2" width="56" height="78" rx="6" fill="#241c3a" stroke="#8a6a2a" stroke-width="3" transform="rotate(10 46 41)"/>
+    <rect x="10" y="4" width="56" height="78" rx="6" fill="#2a2144" stroke="#b08a3c" stroke-width="3" transform="rotate(4 38 43)"/>
+    <rect x="2" y="8" width="56" height="78" rx="6" fill="#33285a" stroke="#e5c56d" stroke-width="3"/>
+    <circle cx="30" cy="47" r="15" fill="none" stroke="#e5c56d" stroke-width="3"/>
+    <ellipse cx="30" cy="47" rx="15" ry="8" fill="none" stroke="#e5c56d" stroke-width="2.5"/>
+    <circle cx="30" cy="47" r="4.5" fill="#f1d58a"/>
+  </g>
+</svg>

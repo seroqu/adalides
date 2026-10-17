@@ -38,6 +38,10 @@ static func card_back() -> Texture2D:
 	return _load("res://assets/icons/card_back.svg")
 
 
+static func deck_plaque() -> Texture2D:
+	return _load("res://assets/icons/deck_plaque.svg")
+
+
 static func color_of(card: ChampionData) -> Color:
 	return HERO_COLOR if card.hero else ELEMENT_COLORS.get(card.element, Color.WHITE)
 
