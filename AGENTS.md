@@ -102,11 +102,13 @@ La cámara cambia por fase (`_camera_view`: tablero, draft o mercado). Las carta
 
 ## Modos, jugadores y tutorial
 
-El menú «Jugar» pide modo, número de adalides (3, 4 o 6) y asaltos por batalla (`Rules.ROUND_OPTIONS`: 2, 3, 4 o
+El menú «Jugar» pide modo, número de adalides (4 o 6, para que nadie descanse) y asaltos por batalla (`Rules.ROUND_OPTIONS`: 2, 3, 4 o
 «hasta el final», que es `Battle.max_rounds = 0` con tope `Rules.SUDDEN_DEATH_CAP`). La semilla es aleatoria y no se
 muestra; solo el tutorial usa una fija. Por defecto: Amateur, 4 adalides, 4 asaltos. El fin de ciclo
 espera a que termine la celebración y muestra una clasificación con barras de vida, lo perdido en el ciclo, Éter,
-racha y resultado (`_fill_standings`). El modo es `Game.Difficulty` y solo cambia a la IA:
+racha y resultado (`_fill_standings`). Las acciones no permitidas se explican con `_deny(razón)` (aviso rojo
+que tiembla) y los botones deshabilitados llevan borde rojo; el Éter se representa con `assets/icons/eter.svg`
+(`Icons.eter()`, `Icons.eter_bb()` para BBCode), nunca con el rombo. El modo es `Game.Difficulty` y solo cambia a la IA:
 Principiante mete mucho ruido en sus puntuaciones, guarda margen antes de mejorar y compra una carta por ciclo;
 Amateur es la IA original con algo de ruido; Profesional no falla combos, invierte antes y refresca el mercado
 si la oferta es floja. Los rivales se llaman Kaelum de las Brasas, Ysolda la Gélida, Tharok Piedrafirme,

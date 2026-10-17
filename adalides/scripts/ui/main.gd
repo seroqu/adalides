@@ -82,7 +82,6 @@ var next_cycle_button: Button
 var paused_menu: bool = false
 
 var upgrade_buttons: Dictionary = {}
-var upgrade_pips: Dictionary = {}
 var shop_eter: Label
 var refresh_button: Button
 var sell_button: Button
@@ -110,6 +109,11 @@ var battle_hp: Array[Label] = []
 var _banner_tween: Tween
 var battle_alive: Array[Label] = []
 var hand_empty_label: Label
+var deny_label: Label # Aviso rojo de acción no permitida.
+var _deny_tween: Tween
+var market_reason: Label # Por qué no se puede comprar/vender la selección.
+var upgrade_chips: Dictionary = {} # Track → HBoxContainer con los pasos de la pista.
+var upgrade_desc: Dictionary = {} # Track → Label con lo actual y lo siguiente.
 var pause_button: Button
 var step_button: Button
 var battle_paused: bool = false
@@ -348,6 +352,21 @@ func _build_ui() -> void:
 	fx_layer.add_child(flash_rect)
 	tier_label_top = _tier_label(Control.PRESET_CENTER_TOP, 150)
 	tier_label_bottom = _tier_label(Control.PRESET_CENTER_BOTTOM, -60)
+	deny_label = Label.new()
+	deny_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	deny_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	deny_label.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	deny_label.offset_top = -300
+	deny_label.offset_bottom = -270
+	deny_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	deny_label.add_theme_font_override("font", GameTheme.bold_font)
+	deny_label.add_theme_font_size_override("font_size", 20)
+	deny_label.add_theme_color_override("font_color", Color(1.0, 0.45, 0.4))
+	deny_label.add_theme_color_override("font_outline_color", Color(0.15, 0, 0, 0.95))
+	deny_label.add_theme_constant_override("outline_size", 8)
+	deny_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	deny_label.visible = false
+	fx_layer.add_child(deny_label)
 	banner = GameTheme.title("", 54)
 	banner.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	banner.grow_horizontal = Control.GROW_DIRECTION_BOTH
@@ -556,7 +575,7 @@ func _build_ui() -> void:
 	players_row.add_theme_constant_override("separation", 6)
 	setup_box.add_child(players_row)
 	var players_group := ButtonGroup.new()
-	for n in [3, 4, 6]:
+	for n in [4, 6]: # Con 4 o 6 nadie descansa: la tabla de batallas los empareja a todos.
 		var b := Button.new()
 		b.text = "%d jugadores" % n
 		b.toggle_mode = true
@@ -927,9 +946,14 @@ func _build_market_panel() -> Control:
 	sub.add_theme_font_size_override("font_size", 12)
 	sub.add_theme_color_override("font_color", GameTheme.TEXT_DIM)
 	hv.add_child(sub)
-	shop_eter = GameTheme.title("◆ 0", 30)
-	shop_eter.add_theme_color_override("font_color", Color(0.62, 0.8, 1.0))
-	hrow.add_child(shop_eter)
+	var eter_row := HBoxContainer.new()
+	eter_row.add_theme_constant_override("separation", 6)
+	eter_row.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	hrow.add_child(eter_row)
+	eter_row.add_child(_eter_icon(30))
+	shop_eter = GameTheme.title("0", 30)
+	shop_eter.add_theme_color_override("font_color", Color(0.75, 0.88, 1.0))
+	eter_row.add_child(shop_eter)
 	# Mejoras del tablero personal: una fila por pista.
 	var ub := _block()
 	box.add_child(ub)
@@ -937,25 +961,24 @@ func _build_market_panel() -> Control:
 	uv.add_theme_constant_override("separation", 4)
 	ub.add_child(uv)
 	uv.add_child(GameTheme.heading("Mejoras", 14))
+	uv.add_theme_constant_override("separation", 8)
 	var icons := { Adalid.Track.CUARTEL: "⌂", Adalid.Track.BATTLE: "⚔", Adalid.Track.DICE: "⚅" }
 	var names := { Adalid.Track.CUARTEL: "Cuartel", Adalid.Track.BATTLE: "En batalla", Adalid.Track.DICE: "Dados" }
 	for track in [Adalid.Track.CUARTEL, Adalid.Track.BATTLE, Adalid.Track.DICE]:
+		var tv := VBoxContainer.new()
+		tv.add_theme_constant_override("separation", 3)
+		uv.add_child(tv)
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 8)
-		uv.add_child(row)
-		var tv := VBoxContainer.new()
-		tv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		tv.add_theme_constant_override("separation", 0)
-		row.add_child(tv)
-		tv.add_child(GameTheme.heading("%s %s" % [icons[track], names[track]], 13))
-		var pips := Label.new()
-		pips.add_theme_font_size_override("font_size", 12)
-		pips.add_theme_color_override("font_color", GameTheme.GOLD)
-		tv.add_child(pips)
-		upgrade_pips[track] = pips
+		tv.add_child(row)
+		var head_label := GameTheme.heading("%s %s" % [icons[track], names[track]], 13)
+		head_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		head_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(head_label)
 		var b := Button.new()
-		b.custom_minimum_size = Vector2(118, 36)
-		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		b.custom_minimum_size = Vector2(126, 34)
+		b.icon_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		b.expand_icon = true
 		b.pressed.connect(func() -> void:
 			if not _tut_can("upgrade_battle" if track == Adalid.Track.BATTLE else "upgrade_other"):
 				return
@@ -963,6 +986,16 @@ func _build_market_panel() -> Control:
 			_refresh_market())
 		row.add_child(b)
 		upgrade_buttons[track] = b
+		# Pasos de la pista: lo conseguido, lo actual (dorado) y el siguiente (marcado).
+		var chips := HBoxContainer.new()
+		chips.add_theme_constant_override("separation", 4)
+		tv.add_child(chips)
+		upgrade_chips[track] = chips
+		var desc := _label("")
+		desc.add_theme_font_size_override("font_size", 12)
+		desc.add_theme_color_override("font_color", GameTheme.TEXT_DIM)
+		tv.add_child(desc)
+		upgrade_desc[track] = desc
 	# Carta elegida y acciones.
 	var cb := _block()
 	box.add_child(cb)
@@ -980,21 +1013,33 @@ func _build_market_panel() -> Control:
 	buy_button.custom_minimum_size = Vector2(0, 44)
 	buy_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	buy_button.add_theme_font_size_override("font_size", 16)
+	buy_button.icon_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	buy_button.expand_icon = true
 	buy_button.pressed.connect(_on_buy_card)
 	GameTheme.primary_button(buy_button)
 	arow.add_child(buy_button)
 	refresh_button = Button.new()
-	refresh_button.text = "⟳ %d ◆" % Rules.MARKET_REFRESH_COST
-	refresh_button.tooltip_text = "Refrescar el mercado"
+	refresh_button.text = "⟳ %d" % Rules.MARKET_REFRESH_COST
+	refresh_button.icon = Icons.eter()
+	refresh_button.icon_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	refresh_button.expand_icon = true
+	refresh_button.tooltip_text = "Refrescar el mercado (cuesta %d de Éter)" % Rules.MARKET_REFRESH_COST
 	refresh_button.custom_minimum_size = Vector2(0, 44)
 	refresh_button.add_theme_font_size_override("font_size", 15)
 	refresh_button.pressed.connect(_on_refresh_market)
 	arow.add_child(refresh_button)
+	market_reason = _label("")
+	market_reason.add_theme_font_size_override("font_size", 12)
+	market_reason.add_theme_color_override("font_color", Color(1.0, 0.5, 0.45))
+	market_reason.visible = false
+	cv.add_child(market_reason)
 	var brow := HBoxContainer.new()
 	brow.add_theme_constant_override("separation", 6)
 	cv.add_child(brow)
 	sell_button = Button.new()
 	sell_button.text = "Vender"
+	sell_button.icon_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	sell_button.expand_icon = true
 	sell_button.pressed.connect(_on_sell)
 	brow.add_child(sell_button)
 	var done := Button.new()
@@ -1005,6 +1050,30 @@ func _build_market_panel() -> Control:
 	done.pressed.connect(_finish_market)
 	brow.add_child(done)
 	return box
+
+
+## Icono del cristal de Éter para filas de la interfaz.
+func _eter_icon(size: float) -> TextureRect:
+	var tr := TextureRect.new()
+	tr.texture = Icons.eter()
+	tr.custom_minimum_size = Vector2(size, size)
+	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	tr.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return tr
+
+
+## Qué da un paso de una pista, en palabras.
+func _track_step_text(track: int, value: Variant) -> String:
+	if value is String:
+		return "un hueco de héroe"
+	var n := int(value)
+	match track:
+		Adalid.Track.CUARTEL:
+			return "%d cartas en el cuartel" % n
+		Adalid.Track.BATTLE:
+			return "%d campeones en batalla" % n
+	return ("%d dado por asalto" if n == 1 else "%d dados por asalto") % n
 
 
 func _build_lineup_panel() -> Control:
@@ -1299,11 +1368,15 @@ func _fill_standings(rows: VBoxContainer) -> void:
 		life_label.add_theme_font_size_override("font_size", 13)
 		life_label.add_theme_color_override("font_color", Color(0.95, 0.45, 0.4) if delta < 0 else (Color(0.5, 0.88, 0.5) if delta > 0 else GameTheme.TEXT))
 		h.add_child(life_label)
+		var eter_row := HBoxContainer.new()
+		eter_row.add_theme_constant_override("separation", 3)
+		eter_row.custom_minimum_size.x = 56
+		eter_row.add_child(_eter_icon(16))
 		var eter_label := Label.new()
-		eter_label.text = "◆ %d" % a.eter
-		eter_label.custom_minimum_size.x = 50
-		eter_label.add_theme_color_override("font_color", Color(0.62, 0.8, 1.0))
-		h.add_child(eter_label)
+		eter_label.text = "%d" % a.eter
+		eter_label.add_theme_color_override("font_color", Color(0.75, 0.88, 1.0))
+		eter_row.add_child(eter_label)
+		h.add_child(eter_row)
 		var streak_label := Label.new()
 		streak_label.text = ("%s %d" % ["▲" if a.streak_is_win else "▼", a.streak]) if a.streak > 0 else "—"
 		streak_label.custom_minimum_size.x = 50
@@ -1344,6 +1417,47 @@ func _cycle_headline() -> String:
 			return "Venciste a %s y no pierdes vida." % opp.display_name
 		return "%s te venció: pierdes %d de vida." % [opp.display_name, lost]
 	return "Este ciclo descansaste."
+
+
+## Acción no permitida: aviso rojo que tiembla, destello y la razón en la pista.
+func _deny(reason: String) -> void:
+	hint.text = reason
+	if _deny_tween != null and _deny_tween.is_valid():
+		_deny_tween.kill()
+	deny_label.text = "✖ " + reason
+	deny_label.visible = true
+	deny_label.modulate = Color(1, 1, 1, 1)
+	deny_label.scale = Vector2.ONE
+	deny_label.pivot_offset = deny_label.size / 2.0
+	var base := deny_label.position
+	var tw := create_tween()
+	_deny_tween = tw
+	tw.tween_property(deny_label, "scale", Vector2.ONE * 1.12, 0.08).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(deny_label, "scale", Vector2.ONE, 0.12)
+	for i in 4:
+		tw.tween_property(deny_label, "position:x", base.x + (8.0 if i % 2 == 0 else -8.0), 0.04)
+	tw.tween_property(deny_label, "position:x", base.x, 0.04)
+	tw.tween_interval(1.6)
+	tw.tween_property(deny_label, "modulate:a", 0.0, 0.4)
+	tw.tween_callback(func() -> void: deny_label.visible = false)
+	_screen_flash(Color(0.45, 0.05, 0.05, 0.35))
+
+
+## Razón por la que una carta no se puede comprar ahora ("" si se puede).
+func _buy_block_reason(card: ChampionData) -> String:
+	var h := game.human
+	if card == null:
+		return ""
+	if not h.can_add(card):
+		var owned := h.find_card(card.id)
+		if owned != null and owned.copies >= Rules.MAX_COPIES:
+			return "Ya tienes las %d copias de %s." % [Rules.MAX_COPIES, card.display_name]
+		if card.hero:
+			return "Sin hueco de héroe: sube la pista Cuartel hasta una «H»."
+		return "Cuartel lleno (%d/%d): vende una carta o mejora el cuartel." % [h.base_count(), h.cuartel_capacity()]
+	if not h.can_pay(card.cost):
+		return "Te faltan %d de Éter para %s." % [card.cost - h.eter, card.display_name]
+	return ""
 
 
 ## Entrada animada de un panel centrado.
@@ -1676,11 +1790,24 @@ func _on_table_card_pressed(c3d: Card3D) -> void:
 	table.select(c3d)
 	if game.state == Game.State.DRAFT:
 		_refresh_draft()
-		if game.draft_current() == game.human and game.human.can_add(card) and _tutorial_allows(card) and _tut_can("take"):
+		if game.draft_current() != game.human:
+			_deny("Espera tu turno: ahora elige %s." % game.draft_current().display_name)
+		elif not game.human.can_add(card):
+			_deny("No cabe en tu cuartel.")
+		elif not _tutorial_allows(card):
+			_deny("En el tutorial toma la carta que se indica.")
+		elif not _tut_can("take"):
+			_deny("Ahora no toca tomar cartas.")
+		else:
 			_begin_drag({ "kind": "table_card", "card": card, "card3d": c3d }, Icons.archetype(card.archetype), card.display_name)
 	elif game.state == Game.State.MARKET:
 		_refresh_market()
-		if game.human.can_add(card) and game.human.can_pay(card.cost) and _tut_can("buy"):
+		var block := _buy_block_reason(card)
+		if block != "":
+			_deny(block)
+		elif not _tut_can("buy"):
+			_deny("Ahora no toca comprar: sigue el paso del tutorial.")
+		else:
 			_begin_drag({ "kind": "table_card", "card": card, "card3d": c3d }, Icons.archetype(card.archetype), card.display_name)
 
 
@@ -1718,35 +1845,98 @@ func _deal_market() -> void:
 func _refresh_market() -> void:
 	var h := game.human
 	hint.text = "Elige una carta de la mesa o de tu mano."
-	shop_eter.text = "◆ %d" % h.eter
+	shop_eter.text = "%d" % h.eter
 	for track in upgrade_buttons:
 		var b: Button = upgrade_buttons[track]
 		var track_values: Array = [Rules.CUARTEL_TRACK, Rules.BATTLE_TRACK, Rules.DICE_TRACK][track]
 		var done_n: int = h.upgrades[track]
-		var marks: PackedStringArray = []
+		var chips: HBoxContainer = upgrade_chips[track]
+		for c in chips.get_children():
+			c.queue_free()
 		for i in track_values.size():
-			marks.append(("[%s]" if i == done_n else " %s ") % str(track_values[i]))
-		upgrade_pips[track].text = "".join(marks)
+			chips.add_child(_track_chip(str(track_values[i]), i, done_n))
+		var desc: Label = upgrade_desc[track]
 		if h.can_upgrade(track):
-			b.text = "Subir a %s · %d ◆" % [str(track_values[done_n + 1]), h.upgrade_cost(track)]
-			b.disabled = not h.can_pay(h.upgrade_cost(track))
+			var cost := h.upgrade_cost(track)
+			b.text = "Mejorar · %d" % cost
+			b.icon = Icons.eter()
+			b.disabled = not h.can_pay(cost)
+			var next_text := _track_step_text(track, track_values[done_n + 1])
+			desc.text = "Ahora %s → siguiente: %s." % [_track_step_text(track, track_values[done_n]), next_text]
+			if b.disabled:
+				desc.text += "  Te faltan %d de Éter." % (cost - h.eter)
+				desc.add_theme_color_override("font_color", Color(1.0, 0.55, 0.5))
+			else:
+				desc.add_theme_color_override("font_color", GameTheme.TEXT_DIM)
+			b.tooltip_text = "Sube la pista a %s por %d de Éter." % [next_text, cost]
 		else:
 			b.text = "Al máximo"
+			b.icon = null
 			b.disabled = true
+			desc.text = "Pista completa: %s." % _track_step_text(track, track_values[done_n])
+			desc.add_theme_color_override("font_color", GameTheme.TEXT_DIM)
 	_show_detail(market_detail, selected_card if game.market.has(selected_card) else null)
-	buy_button.disabled = table_busy or selected_card == null or not game.market.has(selected_card) \
-		or not (h.can_pay(selected_card.cost) and h.can_add(selected_card))
-	buy_button.text = "Comprar" if selected_card == null else "Comprar (%d ◆)" % selected_card.cost
+	var block := _buy_block_reason(selected_card) if selected_card != null and game.market.has(selected_card) else ""
+	buy_button.disabled = table_busy or selected_card == null or not game.market.has(selected_card) or block != ""
+	buy_button.text = "Comprar" if selected_card == null else "Comprar · %d" % selected_card.cost
+	buy_button.icon = null if selected_card == null else Icons.eter()
+	market_reason.text = block
+	market_reason.visible = block != ""
 	refresh_button.disabled = table_busy or not h.can_pay(Rules.MARKET_REFRESH_COST)
+	refresh_button.tooltip_text = "Refrescar el mercado (cuesta %d de Éter)" % Rules.MARKET_REFRESH_COST + ("" if h.can_pay(Rules.MARKET_REFRESH_COST) else " · te faltan %d" % (Rules.MARKET_REFRESH_COST - h.eter))
 	if table.dealt:
 		table.dim_unavailable(func(card: ChampionData) -> bool: return h.can_add(card) and h.can_pay(card.cost))
 	if not h.cuartel.has(selected_cuartel):
 		selected_cuartel = null
 	_refresh_hand()
 	sell_button.disabled = selected_cuartel == null
-	sell_button.text = "Vender" if selected_cuartel == null else "Vender (+%d ◆)" % h.sell_value(selected_cuartel)
+	sell_button.text = "Vender" if selected_cuartel == null else "Vender · +%d" % h.sell_value(selected_cuartel)
+	sell_button.icon = null if selected_cuartel == null else Icons.eter()
+	sell_button.tooltip_text = "Pulsa una carta de tu mano para venderla por la mitad de su coste." if selected_cuartel == null else ""
 	_update_deck_label()
 	_refresh()
+
+
+## Paso de una pista de mejora: hecho (tenue), actual (dorado) o siguiente (marcado con borde claro).
+func _track_chip(text: String, index: int, current: int) -> PanelContainer:
+	var p := PanelContainer.new()
+	var s := StyleBoxFlat.new()
+	s.set_corner_radius_all(5)
+	s.content_margin_left = 6
+	s.content_margin_right = 6
+	s.content_margin_top = 1
+	s.content_margin_bottom = 1
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_override("font", GameTheme.bold_font)
+	l.add_theme_font_size_override("font_size", 12)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	if index == current:
+		s.bg_color = GameTheme.GOLD
+		s.border_color = Color(1, 0.95, 0.75)
+		s.set_border_width_all(1)
+		l.add_theme_color_override("font_color", Color(0.12, 0.08, 0.02))
+		p.tooltip_text = "Tu nivel actual"
+	elif index == current + 1:
+		s.bg_color = Color(0.2, 0.16, 0.08)
+		s.border_color = Color(1, 0.9, 0.6)
+		s.set_border_width_all(1)
+		l.add_theme_color_override("font_color", Color(1, 0.92, 0.7))
+		l.text = "▸ " + text
+		p.tooltip_text = "Siguiente mejora"
+	elif index < current:
+		s.bg_color = Color(0.16, 0.13, 0.08)
+		s.border_color = GameTheme.GOLD_DIM
+		s.set_border_width_all(1)
+		l.add_theme_color_override("font_color", GameTheme.GOLD_DIM)
+	else:
+		s.bg_color = Color(0.08, 0.07, 0.11)
+		s.border_color = Color(0.25, 0.22, 0.2)
+		s.set_border_width_all(1)
+		l.add_theme_color_override("font_color", Color(0.5, 0.47, 0.45))
+	p.add_theme_stylebox_override("panel", s)
+	p.add_child(l)
+	return p
 
 
 ## La mano: cartas del cuartel abajo, pequeñas; la que tiene el ratón encima se agranda.
@@ -1762,7 +1952,7 @@ func _refresh_hand() -> void:
 		if game.state == Game.State.DRAFT:
 			extra = "en tu cuartel"
 		elif game.state == Game.State.MARKET:
-			extra = "vender por %d ◆" % h.sell_value(ch)
+			extra = "vender por %d de Éter" % h.sell_value(ch)
 		elif game.state == Game.State.LINEUP:
 			extra = "arrastra al tablero"
 		cv.setup(ch.data, ch, extra)
@@ -1777,6 +1967,10 @@ func _refresh_hand() -> void:
 				_refresh_market()
 			elif game.state == Game.State.LINEUP:
 				if not _tut_can("lineup_drag"):
+					_deny("Ahora no toca colocar: sigue el paso del tutorial.")
+					return
+				if lineup.size() >= game.human.battle_size() and not lineup.values().has(ch):
+					_deny("Ya tienes %d en batalla, el máximo de tu pista. Quita uno del tablero para cambiarlo." % lineup.size())
 					return
 				pending_card = null if pending_card == ch else ch
 				_refresh_lineup()
@@ -1927,6 +2121,11 @@ func _on_tile_pressed(pos: Vector2i) -> void:
 
 
 func _place_in_lineup(ch: Champion, key: Vector2i) -> void:
+	var already := lineup.values().has(ch)
+	var occupied := lineup.has(key)
+	if not already and not occupied and lineup.size() >= game.human.battle_size():
+		_deny("Solo puedes alinear %d campeones (pista «En batalla»). Quita uno para colocar otro." % game.human.battle_size())
+		return
 	for k in lineup.keys():
 		if lineup[k] == ch:
 			lineup.erase(k)
@@ -1947,7 +2146,8 @@ func _refresh_lineup() -> void:
 	_mark_hand()
 	board3d.sync(Board3D.lineup_to_cells(lineup, 0), false, true, true)
 	var free: Array[Vector2i] = []
-	if pending_card != null:
+	var full := lineup.size() >= game.human.battle_size()
+	if pending_card != null and (not full or lineup.values().has(pending_card)):
 		for row in range(1, Rules.BOARD_ROWS + 1):
 			for col in Rules.BOARD_COLS:
 				if not lineup.has(Vector2i(col, row)):
@@ -1971,6 +2171,7 @@ func _on_lineup_done(by_timeout: bool) -> void:
 			game.set_lineup(Game.auto_lineup(game.human))
 		else:
 			lineup_info.text = "\n".join(errors)
+			_deny(errors[0])
 			return
 	_enter_state()
 
@@ -2527,11 +2728,11 @@ func _refresh() -> void:
 	var racha := ""
 	if h.streak > 0:
 		racha = "   [color=#f0d080]%s %d[/color]" % ["▲" if h.streak_is_win else "▼", h.streak]
-	hud.text = "[color=#7ee07e]♥ %d[/color]   [color=#9ecbff]◆ %d[/color]%s" % [h.life, h.eter, racha]
+	hud.text = "[color=#7ee07e]♥ %d[/color]   %s [color=#9ecbff]%d[/color]%s" % [h.life, Icons.eter_bb(22), h.eter, racha]
 	hud.tooltip_text = "Vida %d · Éter %d · Racha %s · Cuartel %d/%d · Héroes %d/%d · En batalla %d · Dados %d" % [
-		h.life, h.eter, ("%s %d (+%d ◆)" % ["victorias" if h.streak_is_win else "derrotas", h.streak, h.streak_bonus()]) if h.streak > 0 else "—",
+		h.life, h.eter, ("%s %d (+%d de Éter)" % ["victorias" if h.streak_is_win else "derrotas", h.streak, h.streak_bonus()]) if h.streak > 0 else "—",
 		h.base_count(), h.cuartel_capacity(), h.hero_count(), h.hero_slots(), h.battle_size(), h.dice_count()]
-	var lines: PackedStringArray = ["[table=6][cell padding=6,2,6,2][b]Adalid[/b][/cell][cell padding=6,2,6,2][b]♥[/b][/cell][cell padding=6,2,6,2][b]◆[/b][/cell][cell padding=6,2,6,2][b]Cuartel[/b][/cell][cell padding=6,2,6,2][b]Batalla[/b][/cell][cell padding=6,2,6,2][b]Dados[/b][/cell]"]
+	var lines: PackedStringArray = ["[table=6][cell padding=6,2,6,2][b]Adalid[/b][/cell][cell padding=6,2,6,2][b]♥[/b][/cell][cell padding=6,2,6,2][b]Éter[/b][/cell][cell padding=6,2,6,2][b]Cuartel[/b][/cell][cell padding=6,2,6,2][b]Batalla[/b][/cell][cell padding=6,2,6,2][b]Dados[/b][/cell]"]
 	for a in game.adalids:
 		var color := "#f0d080" if a == game.human else ("#777777" if a.eliminated else "#e8e4dc")
 		lines.append("[cell padding=6,2,6,2][color=%s]%s%s[/color][/cell][cell padding=6,2,6,2][color=#7ee07e]%d[/color][/cell][cell padding=6,2,6,2][color=#9ecbff]%d[/color][/cell][cell padding=6,2,6,2]%d/%d[/cell][cell padding=6,2,6,2]%d[/cell][cell padding=6,2,6,2]%d[/cell]" % [

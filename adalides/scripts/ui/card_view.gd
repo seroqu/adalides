@@ -88,7 +88,7 @@ func setup(p_card: ChampionData, p_champion: Champion = null, extra := "") -> vo
 	var copies := ""
 	if champion != null and champion.copies > 1:
 		copies = "  [color=#f0d080]x%d%s[/color]" % [champion.copies, " AFI %d" % champion.afi() if champion.afi() > 0 else ""]
-	stats.text = "[color=#ff8a70]⚔ %d[/color]  [color=#7ee07e]♥ %d[/color]  [color=#9ecbff]◆ %d[/color]%s" % [atk, hp, card.cost, copies]
+	stats.text = "[color=#ff8a70]⚔ %d[/color]  [color=#7ee07e]♥ %d[/color]  %s [color=#9ecbff]%d[/color]%s" % [atk, hp, Icons.eter_bb(15), card.cost, copies]
 	v.add_child(stats)
 	var power := Label.new()
 	power.text = card.power.get("name", "")

@@ -38,6 +38,16 @@ static func card_back() -> Texture2D:
 	return _load("res://assets/icons/card_back.svg")
 
 
+## Cristal de Éter: sustituye al rombo en toda la interfaz.
+static func eter() -> Texture2D:
+	return _load("res://assets/icons/eter.svg")
+
+
+## Etiqueta BBCode del cristal de Éter para RichTextLabel.
+static func eter_bb(size := 16) -> String:
+	return "[img=%dx%d]res://assets/icons/eter.svg[/img]" % [size, size]
+
+
 static func deck_plaque() -> Texture2D:
 	return _load("res://assets/icons/deck_plaque.svg")
 

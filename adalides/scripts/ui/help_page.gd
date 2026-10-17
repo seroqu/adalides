@@ -139,8 +139,8 @@ func _hero(v: VBoxContainer) -> void:
 	chips.add_theme_constant_override("separation", 8)
 	col.add_child(chips)
 	chips.add_child(_chip("♥ 30 vida", GREEN))
-	chips.add_child(_chip("◆ 30 Éter inicial", BLUE))
-	chips.add_child(_chip("6 adalides", GameTheme.GOLD))
+	chips.add_child(_chip("30 Éter inicial", BLUE))
+	chips.add_child(_chip("4 o 6 adalides", GameTheme.GOLD))
 	chips.add_child(_chip("2 a 4 asaltos o hasta el final", RED))
 
 
@@ -151,9 +151,9 @@ func _cycle(v: VBoxContainer) -> void:
 	box.add_child(row)
 	var steps := [
 		["Draft", _icon(Icons.card_back(), 56, Color.WHITE), "Solo el primer ciclo. Pulsa el mazo y, por turnos, cada adalid arrastra dos cartas a su cuartel."],
-		["Mercado", _glyph("◆", BLUE, 40), "60 segundos. Compra cartas del mazo, refresca por 2 ◆, vende de tu mano o sube tus tres pistas."],
+		["Mercado", _icon(Icons.eter(), 44, Color.WHITE), "60 segundos. Compra cartas del mazo, refresca por 2 de Éter, vende de tu mano o sube tus tres pistas."],
 		["Alineación", _glyph("▦", GREEN, 40), "30 segundos. Arrastra cartas de tu mano a tu mitad del campo, hasta el tope de tu pista «En batalla»."],
-		["Batalla", _glyph("⚔", RED, 40), "Automática. Cuatro asaltos: moverse, atacar y poderes con dados. Quien pierde, pierde vida."],
+		["Batalla", _glyph("⚔", RED, 40), "Automática. En cada asalto: moverse, atacar y poderes con dados. Quien pierde, pierde vida."],
 	]
 	for i in steps.size():
 		var s: Array = steps[i]
@@ -184,7 +184,7 @@ func _card(v: VBoxContainer) -> void:
 	var legend := [
 		[_icon(Icons.archetype(sample.archetype), 30, Color.WHITE), "[b]Arquetipo[/b] (icono): decide el alcance y su tier con 2 / 4 / 6 iguales en batalla."],
 		[_icon(Icons.element(sample.element), 30, Icons.color_of(sample)), "[b]Elemento[/b] (color): su tier se activa con 3 / 6 / 9 iguales en batalla."],
-		[_glyph("◆", BLUE, 24), "[b]Coste[/b] en Éter para comprarla; se vende por la mitad."],
+		[_icon(Icons.eter(), 28, Color.WHITE), "[b]Coste[/b] en Éter para comprarla; se vende por la mitad."],
 		[_glyph("⚔ ♥", RED, 20), "[b]Ataque[/b] y [b]vida[/b] del campeón en batalla."],
 		[_glyph("✦", GameTheme.GOLD, 24), "[b]Poder[/b]: activo (sustituye el ataque) o pasivo (se suma). Necesita un dado con el signo que pida."],
 	]
@@ -285,7 +285,7 @@ func _battle(v: VBoxContainer) -> void:
 
 
 func _eter(v: VBoxContainer) -> void:
-	var box := _section(v, "Éter y mejoras", "Al empezar cada ciclo (salvo el primero) cobras 10 ◆, más 3 por cada 10 ◆ ahorrados, más el bono de racha por victorias o derrotas seguidas.")
+	var box := _section(v, "Éter y mejoras", "Al empezar cada ciclo (salvo el primero) cobras 10 de Éter, más 3 por cada 10 ahorrados, más el bono de racha por victorias o derrotas seguidas.")
 	var tracks := [
 		["⌂ Cuartel", "cartas que caben en tu cuartel (H = hueco de héroe)", Rules.CUARTEL_TRACK],
 		["⚔ En batalla", "campeones que puedes alinear", Rules.BATTLE_TRACK],
@@ -306,7 +306,7 @@ func _eter(v: VBoxContainer) -> void:
 			pips.add_child(_chip(str(values[i]), GameTheme.GOLD if i == 0 else GameTheme.GOLD_DIM, 34))
 		var d := _text(t[1], 13, GameTheme.TEXT_DIM)
 		r.add_child(d)
-	box.add_child(_text("Cada mejora cuesta 5 ◆ más 5 por cada mejora anterior de esa misma pista (5, 10, 15…). Refrescar el mercado cuesta 2 ◆ y vender una carta devuelve la mitad de su coste.", 13, GameTheme.TEXT_DIM))
+	box.add_child(_text("Cada mejora cuesta 5 de Éter más 5 por cada mejora anterior de esa misma pista (5, 10, 15…). Refrescar el mercado cuesta 2 y vender una carta devuelve la mitad de su coste.", 13, GameTheme.TEXT_DIM))
 
 
 static func _short(text: String, max_len: int) -> String:

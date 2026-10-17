@@ -354,6 +354,6 @@ Lo que el documento no fija y la implementación resuelve con un supuesto (ver `
 
 - **Principiante, Amateur y Profesional** cambian solo la inteligencia de los rivales (elección de cartas,
   mejoras y refrescos del mercado). Las reglas son las mismas.
-- Partidas de **3, 4 o 6 adalides**; con 3 uno descansa cada ciclo.
+- Partidas de **4 o 6 adalides**, para que nadie descanse ningún ciclo.
 - **Tutorial**: duelo guiado contra un rival con 5 de vida y 5 de Éter, sin temporizadores, que enseña el draft,
   la alineación, la batalla asalto a asalto, el mercado y las mejoras en dos ciclos.

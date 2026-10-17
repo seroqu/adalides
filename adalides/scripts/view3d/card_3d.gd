@@ -153,7 +153,8 @@ func setup(p_card: ChampionData) -> void:
 		_elem = elem
 	else:
 		_face.add_child(flat_label("★ Héroe", 30, Icons.HERO_COLOR, tex_pos(118, 420), 4))
-	_face.add_child(flat_label("◆ %d" % card.cost, 40, Color(0.62, 0.8, 1.0), tex_pos(408, 420), 4))
+	_face.add_child(flat_sprite(Icons.eter(), TEXT_PX * 0.42, tex_pos(368, 420), 4))
+	_face.add_child(flat_label("%d" % card.cost, 40, Color(0.75, 0.88, 1.0), tex_pos(418, 420), 4))
 	# Banda inferior: poder y ataque / vida.
 	var power := flat_label(String(card.power.get("name", "")), 34, Color(1.0, 0.88, 0.6), tex_pos(256, 616), 3, 420)
 	power.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

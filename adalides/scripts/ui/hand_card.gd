@@ -97,7 +97,9 @@ func _draw() -> void:
 		draw_texture_rect(Icons.element(card.element), Rect2(_p(100, 418) - Vector2(es, es) / 2.0, Vector2(es, es)), false, Color.WHITE)
 	else:
 		_text(_p(118, 428), "★ Héroe", 9, Icons.HERO_COLOR)
-	_text(_p(408, 428), "◆ %d" % card.cost, 12, Color(0.62, 0.8, 1.0))
+	var cs := _p(26, 0).x
+	draw_texture_rect(Icons.eter(), Rect2(_p(376, 416) - Vector2(cs, cs) / 2.0, Vector2(cs, cs)), false, Color.WHITE)
+	_text(_p(414, 428), "%d" % card.cost, 12, Color(0.75, 0.88, 1.0))
 	# Poder, ataque y vida (con las copias aplicadas).
 	var power := String(card.power.get("name", ""))
 	var ps := 9

@@ -157,10 +157,10 @@ func _card_target() -> Variant:
 
 
 func _build_steps() -> void:
-	var cfg := "[b]Bienvenido, adalid.[/b] Esta partida corta te enseña lo básico: elegir cartas, colocarlas, luchar y comprar. Empiezas con [color=#7ee07e]♥ %d[/color] de vida y [color=#9ecbff]◆ %d[/color] de Éter.\n\nEste es el [b]mazo del Demiurgo[/b]. Púlsalo para repartir." % [LIFE, ETER]
+	var cfg := "[b]Bienvenido, adalid.[/b] Esta partida corta te enseña lo básico: elegir cartas, colocarlas, luchar y comprar. Empiezas con [color=#7ee07e]♥ %d[/color] de vida y " + Icons.eter_bb(16) + " [color=#9ecbff]%d[/color] de Éter.\n\nEste es el [b]mazo del Demiurgo[/b]. Púlsalo para repartir." % [LIFE, ETER]
 	_step(cfg, func() -> Variant: return main.table.deck_pos + Vector3(0, 0.3, 0),
 		func() -> bool: return _my_turn(), null, null, ["deal"])
-	_step("Cada carta es un [b]campeón[/b]: el icono es su arquetipo, el color su elemento; abajo, ataque ⚔, vida ♥ y coste ◆.\n\n[b]Arrastra «%s»[/b] hasta el panel de la derecha para tomarla.",
+	_step("Cada carta es un [b]campeón[/b]: el icono es su arquetipo, el color su elemento; abajo, ataque ⚔, vida ♥ y coste (cristal de Éter).\n\n[b]Arrastra «%s»[/b] hasta el panel de la derecha para tomarla.",
 		_card_target,
 		func() -> bool: return _human().cuartel.size() >= 1 and (_my_turn() or _game().state != Game.State.DRAFT),
 		func() -> void:
@@ -200,16 +200,16 @@ func _build_steps() -> void:
 		func() -> Variant: return main.next_cycle_button if _game().state == Game.State.CYCLE_END else null,
 		func() -> bool: return _game().state == Game.State.MARKET or _game().state == Game.State.OVER,
 		null, null, ["next_cycle"])
-	_step("[b]El mercado.[/b] Cada ciclo cobras 10 ◆ más intereses (3 por cada 10 ahorrados) y el bono de racha. Tu Éter está en la cabecera de la tienda.\n\n[b]Arrastra una carta[/b] de la mesa al panel para comprarla.",
+	_step("[b]El mercado.[/b] Cada ciclo cobras 10 de Éter más intereses (3 por cada 10 ahorrados) y el bono de racha. Tu Éter está en la cabecera de la tienda.\n\n[b]Arrastra una carta[/b] de la mesa al panel para comprarla.",
 		func() -> Variant: return main.buy_button,
 		func() -> bool: return _human().cuartel.size() >= 3 or _game().state != Game.State.MARKET,
 		func() -> void: main.hint.text = "",
 		null, ["buy"])
-	_step("[b]Mejoras.[/b] Tres pistas: tamaño del cuartel, campeones en batalla y dados. Cada mejora cuesta 5 ◆ más que la anterior de su pista.\n\nSube [b]«En batalla»[/b] para alinear un campeón más.",
+	_step("[b]Mejoras.[/b] Tres pistas: tamaño del cuartel, campeones en batalla y dados. Cada mejora cuesta 5 de Éter más que la anterior de su pista.\n\nSube [b]«En batalla»[/b] para alinear un campeón más.",
 		func() -> Variant: return main.upgrade_buttons[Adalid.Track.BATTLE],
 		func() -> bool: return _human().upgrades[Adalid.Track.BATTLE] >= 1 or not _human().can_pay(_human().upgrade_cost(Adalid.Track.BATTLE)) or _game().state != Game.State.MARKET,
 		null, null, ["upgrade_battle"])
-	_step("Dos cosas más: [b]Refrescar[/b] cambia las cartas de la mesa por 2 ◆, y pulsar una carta de tu mano y [b]Vender[/b] devuelve la mitad de su coste. Las copias de una misma carta se funden y la hacen más fuerte. Prueba lo que quieras.\n\nCuando termines, pulsa [b]Listo, a alinear[/b].",
+	_step("Dos cosas más: [b]Refrescar[/b] cambia las cartas de la mesa por 2 de Éter, y pulsar una carta de tu mano y [b]Vender[/b] devuelve la mitad de su coste. Las copias de una misma carta se funden y la hacen más fuerte. Prueba lo que quieras.\n\nCuando termines, pulsa [b]Listo, a alinear[/b].",
 		func() -> Variant: return main.market_done_button,
 		func() -> bool: return _game().state != Game.State.MARKET,
 		null, null, ["buy", "refresh", "sell", "upgrade_battle", "upgrade_other", "market_done"])
