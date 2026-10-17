@@ -119,6 +119,7 @@ var video_layer: Control
 var video_player: VideoStreamPlayer
 var video_title: Label
 var _video_token: int = 0
+var _video_on_done: Callable
 var _deny_tween: Tween
 var market_reason: Label # Por qué no se puede comprar/vender la selección.
 var upgrade_chips: Dictionary = {} # Track → HBoxContainer con los pasos de la pista.
@@ -141,8 +142,10 @@ func _ready() -> void:
 		_tutorial_tour(args[1])
 	elif args.size() >= 2 and args[0] == "--victory":
 		_victory_tour(args[1])
+	elif args.size() >= 2 and args[0] == "--intro":
+		_intro_tour(args[1])
 	else:
-		_show_main_menu()
+		_play_intro_video()
 
 
 # ---------------------------------------------------------------- mundo 3D
@@ -382,8 +385,6 @@ func _build_ui() -> void:
 	video_player.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	video_player.expand = true
 	video_player.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	if ResourceLoader.exists("res://assets/video/victoria.ogv"):
-		video_player.stream = load("res://assets/video/victoria.ogv")
 	video_layer.add_child(video_player)
 	video_title = GameTheme.title("¡ERES EL NUEVO DEMIURGO!", 56)
 	video_title.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
@@ -1533,21 +1534,46 @@ func _buy_block_reason(card: ChampionData) -> String:
 
 ## Reproduce el vídeo de victoria a pantalla completa; al acabar (o al saltarlo) celebra y muestra el panel.
 func _play_victory_video() -> void:
-	_video_token += 1
-	var token := _video_token
-	if video_player.stream == null:
+	if video_player.stream == null or not ResourceLoader.exists("res://assets/video/victoria.ogv"):
 		_celebrate("¡ERES EL NUEVO DEMIURGO!", GameTheme.GOLD, true)
 		return
 	var panel: Control = panels[Game.State.OVER]
 	await get_tree().process_frame
 	panel.visible = false
+	_play_fullscreen_video(load("res://assets/video/victoria.ogv"), "¡ERES EL NUEVO DEMIURGO!", 7.6, func() -> void:
+		if game != null and game.state == Game.State.OVER:
+			panel.visible = true
+			_pop_in(panel)
+			_celebrate("¡ERES EL NUEVO DEMIURGO!", GameTheme.GOLD, true))
+
+
+## Intro al arrancar: el vídeo de presentación y luego el menú. Solo una vez por ejecución.
+func _play_intro_video() -> void:
+	if not ResourceLoader.exists("res://assets/video/intro.ogv"):
+		_show_main_menu()
+		return
+	var stream: VideoStream = load("res://assets/video/intro.ogv")
+	_play_fullscreen_video(stream, "Adalides del demiurgo", -1.2, _show_main_menu)
+
+
+## Vídeo a pantalla completa con fundidos. `title_at` es el segundo en que entra el título
+## (negativo: segundos antes del final). Clic o Esc lo saltan; `on_done` se llama al terminar.
+func _play_fullscreen_video(stream: VideoStream, title_text: String, title_at: float, on_done: Callable) -> void:
+	_video_token += 1
+	var token := _video_token
+	_video_on_done = on_done
+	video_player.stream = stream
+	video_title.text = title_text
 	video_title.visible = false
 	video_layer.visible = true
 	video_layer.modulate = Color(1, 1, 1, 0)
 	video_player.play()
 	create_tween().tween_property(video_layer, "modulate:a", 1.0, 0.6)
-	# El título entra sobre el plano final del vídeo.
-	await get_tree().create_timer(7.6, false).timeout
+	var length: float = video_player.get_stream_length()
+	var at: float = title_at if title_at >= 0.0 else maxf(length + title_at, 0.5)
+	if length <= 0.0 and title_at < 0.0:
+		at = 8.0
+	await get_tree().create_timer(at, false).timeout
 	if token != _video_token:
 		return
 	video_title.visible = true
@@ -1561,30 +1587,29 @@ func _play_victory_video() -> void:
 		await get_tree().process_frame
 	if token != _video_token:
 		return
-	await get_tree().create_timer(1.2, false).timeout
+	await get_tree().create_timer(1.0, false).timeout
 	if token != _video_token:
 		return
-	_finish_victory_video()
+	_finish_video()
 
 
 func _skip_victory_video() -> void:
 	if not video_layer.visible:
 		return
 	_video_token += 1
-	_finish_victory_video()
+	_finish_video()
 
 
-func _finish_victory_video() -> void:
+func _finish_video() -> void:
+	var done := _video_on_done
+	_video_on_done = Callable()
 	var tw := create_tween()
 	tw.tween_property(video_layer, "modulate:a", 0.0, 0.5)
 	tw.tween_callback(func() -> void:
 		video_player.stop()
 		video_layer.visible = false
-		if game != null and game.state == Game.State.OVER:
-			var panel: Control = panels[Game.State.OVER]
-			panel.visible = true
-			_pop_in(panel)
-			_celebrate("¡ERES EL NUEVO DEMIURGO!", GameTheme.GOLD, true))
+		if done.is_valid():
+			done.call())
 
 
 ## Entrada animada de un panel centrado.
@@ -3210,6 +3235,23 @@ func _screenshot_tour(dir: String) -> void:
 			await get_tree().process_frame
 		await get_tree().create_timer(0.8, false).timeout
 		await _snap(dir.path_join("8_fin_ciclo.png"))
+	get_tree().quit()
+
+
+## Reproduce la intro y captura dos momentos y el menú.
+func _intro_tour(dir: String) -> void:
+	_play_intro_video()
+	await get_tree().create_timer(2.5, false).timeout
+	await _snap(dir.path_join("i1_intro.png"))
+	var length: float = video_player.get_stream_length()
+	if length <= 0.0:
+		length = 5.0
+	await get_tree().create_timer(maxf(length - 3.2, 0.5), false).timeout
+	await _snap(dir.path_join("i2_titulo.png"))
+	while video_layer.visible:
+		await get_tree().process_frame
+	await get_tree().create_timer(0.8, false).timeout
+	await _snap(dir.path_join("i3_menu.png"))
 	get_tree().quit()
 
 

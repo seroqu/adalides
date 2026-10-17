@@ -52,7 +52,8 @@ del juego (README v1: sinergias 3/5/7, DA+DP, estertores) quedó obsoleta el 202
     ├── assets/models/           GLB por arquetipo generados con tools/build_champions.py (Blender): miniaturas de
     │                            piedra con filetes dorados; el pedestal hexagonal y los cristales del elemento los
     │                            construye ChampionPiece en código
-    ├── assets/video/victoria.ogv Vídeo de victoria (Theora) que se reproduce a pantalla completa al ganar la partida
+    ├── assets/video/            intro.ogv (se reproduce al arrancar, antes del menú) y victoria.ogv (al ganar la
+    │                            partida); ambos en Theora, a pantalla completa, con título superpuesto y salto con clic o Esc
     └── tools/build_champions.py Construye y anima los diez modelos en Blender (clips idle, walk,
                                  attack por arquetipo, hit, death, cheer; exporta NLA_TRACKS)
     └── tests/
@@ -116,7 +117,9 @@ mercado) va abajo a la izquierda (`_show_card_detail`, con «✕» para deselecc
 `_combo_lines`); en alineación y batalla el panel izquierdo lista los tiers activos (`_refresh_tiers_panel`).
 `Game.auto_lineup` elige el ejército con `pick_squad`, que busca tiers además de números. En batalla, un campeón que ya atacó o usó
 su poder se apaga (`ChampionPiece.set_spent`) hasta el siguiente asalto. El ojo del menú (`DemiurgeEye`) sigue el
-diseño del vídeo de victoria; al ganar, `_play_victory_video` reproduce `assets/video/victoria.ogv` (clic o Esc salta). El modo es `Game.Difficulty` y solo cambia a la IA:
+diseño del vídeo de victoria; al ganar, `_play_victory_video` reproduce `assets/video/victoria.ogv` y al arrancar `_play_intro_video` reproduce
+`assets/video/intro.ogv`; ambos pasan por `_play_fullscreen_video(stream, título, segundo, on_done)`. Los prompts de
+los vídeos están en `docs/`. El modo es `Game.Difficulty` y solo cambia a la IA:
 Principiante mete mucho ruido en sus puntuaciones, guarda margen antes de mejorar y compra una carta por ciclo;
 Amateur es la IA original con algo de ruido; Profesional no falla combos, invierte antes y refresca el mercado
 si la oferta es floja. Los rivales se llaman Kaelum de las Brasas, Ysolda la Gélida, Tharok Piedrafirme,
@@ -162,6 +165,7 @@ lee `Battle.events` (move / attack / damage / heal / power / tier / dodge / free
   `godot --path adalides --resolution 1500x950 -- --screenshots /ruta/de/salida`
 - Recorrido automático del tutorial con capturas: `godot --path adalides -- --tutorial /ruta/de/salida`
 - Vídeo de victoria con capturas: `godot --path adalides -- --victory /ruta/de/salida`
+- Intro con capturas: `godot --path adalides -- --intro /ruta/de/salida`
 - Reconstruir los modelos: `blender -b -P adalides/tools/build_champions.py` y copiar
   `mago_lowpoly_alt.glb` a `mago.glb` (el juego carga `<arquetipo>.glb`)
 - Exportar (plantillas en `~/.local/share/godot/export_templates/4.7.2.stable/`, instaladas desde el .tpz oficial):
