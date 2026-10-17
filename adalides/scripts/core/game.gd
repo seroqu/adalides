@@ -5,6 +5,10 @@ extends RefCounted
 ## humano, `play_cycle()` lo hace todo con la IA.
 
 enum State { IDLE, DRAFT, MARKET, LINEUP, BATTLE, CYCLE_END, OVER }
+## Nivel de la IA: cuánto ruido mete en sus decisiones y cuánto arriesga.
+enum Difficulty { PRINCIPIANTE, AMATEUR, PROFESIONAL }
+
+var difficulty: Difficulty = Difficulty.AMATEUR
 
 var adalids: Array[Adalid] = []
 var deck: Deck
@@ -36,6 +40,23 @@ func _init(names: PackedStringArray, seed_value: int = 0) -> void:
 func set_human(index: int) -> void:
 	human = adalids[index]
 	human.is_ai = false
+
+
+## Vida y Éter iniciales distintos de los de las reglas (tutorial).
+func set_start(life: int, eter: int) -> void:
+	for a in adalids:
+		a.life = life
+		a.eter = eter
+
+
+## Ruido aleatorio que se suma a la puntuación de una carta según la dificultad.
+func _ai_noise() -> float:
+	match difficulty:
+		Difficulty.PRINCIPIANTE:
+			return rng.randf() * 12.0
+		Difficulty.AMATEUR:
+			return rng.randf() * 3.0
+	return 0.0
 
 
 func alive_adalids() -> Array[Adalid]:
@@ -409,7 +430,7 @@ func ai_pick(a: Adalid, pool: Array[ChampionData]) -> ChampionData:
 	for card in pool:
 		if not a.can_add(card):
 			continue
-		var s := card_score(a, card)
+		var s := card_score(a, card) + _ai_noise()
 		if s > best_score:
 			best = card
 			best_score = s
@@ -417,18 +438,42 @@ func ai_pick(a: Adalid, pool: Array[ChampionData]) -> ChampionData:
 
 
 func ai_market(a: Adalid) -> void:
-	# Mejoras: si sobra Éter, alterna cuartel → batalla → dados.
+	# Mejoras: si sobra Éter, alterna batalla → cuartel → dados. El principiante
+	# guarda más margen y el profesional invierte antes.
 	var tracks: Array = [Adalid.Track.BATTLE, Adalid.Track.CUARTEL, Adalid.Track.DICE]
+	var margin := 6
+	match difficulty:
+		Difficulty.PRINCIPIANTE: margin = 14
+		Difficulty.PROFESIONAL: margin = 3
 	for _i in 3:
 		for track in tracks:
-			if a.can_upgrade(track) and a.eter >= a.upgrade_cost(track) + 6:
+			if a.can_upgrade(track) and a.eter >= a.upgrade_cost(track) + margin:
 				a.upgrade(track)
 				log.append("  %s mejora %s." % [a.display_name, Adalid.track_label(track)])
 	var offer := _draw_market(a)
 	var bought: PackedStringArray = []
+	var scores := {}
+	for card in offer:
+		scores[card] = card_score(a, card) + _ai_noise()
+	# El profesional refresca una vez si la oferta es floja.
+	if difficulty == Difficulty.PROFESIONAL and a.can_pay(Rules.MARKET_REFRESH_COST + 3):
+		var best := 0.0
+		for card in offer:
+			best = maxf(best, scores[card])
+		if best < 9.0:
+			a.pay(Rules.MARKET_REFRESH_COST)
+			deck.put_back(offer)
+			offer = _draw_market(a)
+			scores.clear()
+			for card in offer:
+				scores[card] = card_score(a, card)
+			log.append("  %s refresca el mercado." % a.display_name)
 	var ranked := offer.duplicate()
-	ranked.sort_custom(func(x: ChampionData, y: ChampionData) -> bool: return card_score(a, x) > card_score(a, y))
+	ranked.sort_custom(func(x: ChampionData, y: ChampionData) -> bool: return scores[x] > scores[y])
+	var max_buys := 1 if difficulty == Difficulty.PRINCIPIANTE else 99
 	for card in ranked:
+		if bought.size() >= max_buys:
+			break
 		if a.buy(card):
 			offer.erase(card)
 			bought.append(card.display_name)

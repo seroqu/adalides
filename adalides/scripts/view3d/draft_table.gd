@@ -103,9 +103,10 @@ func deal(pool: Array[ChampionData]) -> void:
 		tw.tween_callback(c.flip.bind(0.35))
 		last = tw
 		i += 1
+	# Se espera por tiempo, no por el tween: si la mesa se vacía a mitad del
+	# reparto (fin del mercado), el tween muere y un await sobre él no volvería.
 	if last != null:
-		await last.finished
-		await get_tree().create_timer(0.4).timeout
+		await get_tree().create_timer(0.08 * pool.size() + 0.3 + 0.35 + 0.4, false).timeout
 
 
 ## La carta vuela hacia el fondo (la toma una IA) o hacia la cámara (la tomas tú).

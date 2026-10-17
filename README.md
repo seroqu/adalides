@@ -348,3 +348,12 @@ Lo que el documento no fija y la implementación resuelve con un supuesto (ver `
 - Qué dados (d6/d20) usan Tormenta, Curación relámpago, Cosecha oscura y Tormenta de flechas para señalar columnas/filas.
 - Elemento de los héroes y si el "5/6 base" de la tabla de héroes es una carta.
 - Tamaño del mercado y orden del draft.
+
+
+## Modos de juego y tutorial (versión digital)
+
+- **Principiante, Amateur y Profesional** cambian solo la inteligencia de los rivales (elección de cartas,
+  mejoras y refrescos del mercado). Las reglas son las mismas.
+- Partidas de **3, 4 o 6 adalides**; con 3 uno descansa cada ciclo.
+- **Tutorial**: duelo guiado contra un rival con 5 de vida y 5 de Éter, sin temporizadores, que enseña el draft,
+  la alineación, la batalla asalto a asalto, el mercado y las mejoras en dos ciclos.

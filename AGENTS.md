@@ -43,6 +43,7 @@ del juego (README v1: sinergias 3/5/7, DA+DP, estertores) quedó obsoleta el 202
     │   ├── ui/main.gd           Partida jugable: tú contra 5 IA (menú, barra superior, columna lateral, mano)
     │   ├── ui/card_view.gd      Carta 2D (mano y detalle); ui/game_theme.gd tema; ui/icons.gd iconos y texturas
     │   ├── ui/help_page.gd      Guía visual «Cómo se juega» (HelpPage.build())
+    │   ├── ui/tutorial.gd       Tutorial guiado por pasos (Tutorial: duelo con vida y Éter 5, semilla fija)
     │   └── view3d/              Tablero, fichas con modelos GLB, cartas 3D (card_3d.gd), mesa del draft,
     │                            efectos (fx.gd) y decorado compartido (deco.gd: sellos, braseros, motas)
     ├── assets/particles/        Sprites de partículas del Particle Pack de Kenney (CC0); Fx.tex("nombre")
@@ -97,6 +98,18 @@ de la fase, mano de cartas abajo y paneles desplegables (Adalides, Habilidades, 
 La cámara cambia por fase (`_camera_view`: tablero, draft o mercado). Las cartas 3D usan
 `assets/icons/card_frame.svg` teñido del color del elemento y `card_back.svg` como dorso.
 
+## Modos, jugadores y tutorial
+
+El menú «Jugar» pide modo y número de adalides (3, 4 o 6). El modo es `Game.Difficulty` y solo cambia a la IA:
+Principiante mete mucho ruido en sus puntuaciones, guarda margen antes de mejorar y compra una carta por ciclo;
+Amateur es la IA original con algo de ruido; Profesional no falla combos, invierte antes y refresca el mercado
+si la oferta es floja. Los rivales se llaman Kaelum de las Brasas, Ysolda la Gélida, Tharok Piedrafirme,
+Selenia del Céfiro y Vargo Truenante (`MainScene.AI_NAMES`). «Tutorial» crea un duelo contra Kaelum con
+`Game.set_start(5, 5)` y semilla fija; `Tutorial` encadena 14 pasos (draft guiado con una carta obligada,
+salta el primer mercado, alineación a mano, primera batalla asalto a asalto, mercado y mejoras, segunda batalla
+automática, cierre). Sin temporizadores. Se prueba con `godot --path adalides -- --tutorial DIR`, que ejecuta
+cada paso solo y captura pantallas.
+
 ## Cómo fluye una partida con jugador humano
 
 `Game` es una máquina de estados (`Game.State`): `begin_cycle()` reparte el draft y ejecuta los picks de la IA hasta
@@ -129,6 +142,7 @@ lee `Battle.events` (move / attack / damage / heal / power / tier / dodge / free
 - Escena principal: `godot --headless --path adalides --quit-after 5`
 - Capturas de cada fase (abre una ventana real unos segundos):
   `godot --path adalides --resolution 1500x950 -- --screenshots /ruta/de/salida`
+- Recorrido automático del tutorial con capturas: `godot --path adalides -- --tutorial /ruta/de/salida`
 - Editor: `godot -e --path adalides`
 - Rama principal: `master`. Commits en español, en presente ("Agrega la escena de combate").
 - No subir `adalides/.godot/` ni exportaciones; ya están en `.gitignore`.

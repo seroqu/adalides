@@ -1,9 +1,16 @@
+class_name MainScene
 extends Node3D
 ## Partida v2 en 3D: tú contra cinco IA. El tablero y las cartas del draft y
 ## del mercado viven en la escena 3D; las fases se controlan desde una capa 2D.
 ## Los asaltos se resuelven solos y se animan evento a evento.
 
-const NAMES: PackedStringArray = ["Tú", "Bruno", "Carla", "Dani", "Eva", "Fito"]
+const AI_NAMES: PackedStringArray = ["Kaelum de las Brasas", "Ysolda la Gélida", "Tharok Piedrafirme", "Selenia del Céfiro", "Vargo Truenante"]
+const MODE_NAMES: PackedStringArray = ["Principiante", "Amateur", "Profesional"]
+const MODE_TEXT: PackedStringArray = [
+	"Los rivales eligen al azar y gastan con cautela. Para aprender sin prisa.",
+	"Los rivales buscan combos y mejoran su tablero. La partida tal como está pensada.",
+	"Los rivales refrescan el mercado, invierten pronto y no fallan un combo.",
+]
 const AUTO_ROUND_SECONDS := 2.0
 const MARKET_SECONDS := 60
 const LINEUP_SECONDS := 30
@@ -61,6 +68,14 @@ var menu_panel: Control
 var menu_box: VBoxContainer
 var menu_title: Label
 var in_main_menu: bool = true
+var tutorial: Tutorial = null
+var setup_mode: int = 1 # Game.Difficulty
+var setup_players: int = 6
+var setup_box: VBoxContainer
+var mode_text: Label
+var lineup_go_button: Button
+var market_done_button: Button
+var next_cycle_button: Button
 var paused_menu: bool = false
 
 var upgrade_buttons: Dictionary = {}
@@ -97,6 +112,8 @@ func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
 	if args.size() >= 2 and args[0] == "--screenshots":
 		_screenshot_tour(args[1])
+	elif args.size() >= 2 and args[0] == "--tutorial":
+		_tutorial_tour(args[1])
 	else:
 		_show_main_menu()
 
@@ -475,7 +492,8 @@ func _build_ui() -> void:
 	sub.add_theme_color_override("font_color", GameTheme.TEXT_DIM)
 	sub.name = "Subtitle"
 	menu_box.add_child(sub)
-	menu_box.add_child(_menu_button("Jugar", _start_game, true, "Play"))
+	menu_box.add_child(_menu_button("Jugar", func() -> void: _show_setup(true), true, "Play"))
+	menu_box.add_child(_menu_button("Tutorial", _start_tutorial, false, "Tutorial"))
 	menu_box.add_child(_menu_button("Reanudar", _toggle_pause_menu, true, "Resume"))
 	menu_box.add_child(_menu_button("Partida nueva", func() -> void:
 		_toggle_pause_menu()
@@ -483,11 +501,56 @@ func _build_ui() -> void:
 	menu_box.add_child(_menu_button("Cómo se juega", func() -> void: _toggle_overlay(help_panel), false, "Help"))
 	menu_box.add_child(_menu_button("Menú principal", _show_main_menu, false, "Main"))
 	menu_box.add_child(_menu_button("Salir", func() -> void: get_tree().quit(), false, "Quit"))
+	# Configuración de la partida: modo, número de adalides y semilla.
+	setup_box = VBoxContainer.new()
+	setup_box.name = "Setup"
+	setup_box.add_theme_constant_override("separation", 8)
+	setup_box.visible = false
+	menu_box.add_child(setup_box)
+	setup_box.add_child(GameTheme.heading("Modo", 14))
+	var mode_row := HBoxContainer.new()
+	mode_row.add_theme_constant_override("separation", 6)
+	setup_box.add_child(mode_row)
+	var mode_group := ButtonGroup.new()
+	for i in MODE_NAMES.size():
+		var b := Button.new()
+		b.text = MODE_NAMES[i]
+		b.toggle_mode = true
+		b.button_group = mode_group
+		b.button_pressed = i == setup_mode
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.custom_minimum_size.y = 38
+		b.add_theme_stylebox_override("pressed", GameTheme.button_style(Color(0.32, 0.24, 0.08), GameTheme.GOLD))
+		b.pressed.connect(func() -> void:
+			setup_mode = i
+			mode_text.text = MODE_TEXT[i])
+		mode_row.add_child(b)
+	mode_text = _label(MODE_TEXT[setup_mode])
+	mode_text.add_theme_font_size_override("font_size", 13)
+	mode_text.add_theme_color_override("font_color", GameTheme.TEXT_DIM)
+	mode_text.custom_minimum_size.y = 40
+	setup_box.add_child(mode_text)
+	setup_box.add_child(GameTheme.heading("Adalides", 14))
+	var players_row := HBoxContainer.new()
+	players_row.add_theme_constant_override("separation", 6)
+	setup_box.add_child(players_row)
+	var players_group := ButtonGroup.new()
+	for n in [3, 4, 6]:
+		var b := Button.new()
+		b.text = "%d jugadores" % n
+		b.toggle_mode = true
+		b.button_group = players_group
+		b.button_pressed = n == setup_players
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.custom_minimum_size.y = 38
+		b.add_theme_stylebox_override("pressed", GameTheme.button_style(Color(0.32, 0.24, 0.08), GameTheme.GOLD))
+		b.pressed.connect(func() -> void: setup_players = n)
+		players_row.add_child(b)
 	var seed_row := HBoxContainer.new()
 	seed_row.name = "Seed"
 	seed_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	seed_row.add_theme_constant_override("separation", 8)
-	menu_box.add_child(seed_row)
+	setup_box.add_child(seed_row)
 	var seed_label := _label("Semilla")
 	seed_label.add_theme_color_override("font_color", GameTheme.TEXT_DIM)
 	seed_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -498,6 +561,11 @@ func _build_ui() -> void:
 	seed_edit.custom_minimum_size.x = 120
 	seed_edit.alignment = HORIZONTAL_ALIGNMENT_CENTER
 	seed_row.add_child(seed_edit)
+	var start := _menu_button("¡Empezar!", _start_game, true, "Start")
+	setup_box.add_child(start)
+	var back := _menu_button("Volver", func() -> void: _show_setup(false), false, "Back")
+	back.custom_minimum_size.y = 36
+	setup_box.add_child(back)
 	# Los paneles desplegables van por encima de la mano y del menú (la guía se abre desde la pausa).
 	for p in [standings_panel, log_panel, skills_panel, help_panel]:
 		root.move_child(p, root.get_child_count() - 1)
@@ -576,6 +644,7 @@ func _show_main_menu() -> void:
 	in_main_menu = true
 	_auto_token += 1
 	battle_playing = false
+	_end_tutorial()
 	game = null
 	table.clear()
 	table.visible = false
@@ -621,10 +690,20 @@ func _set_menu_mode(main: bool) -> void:
 	menu_panel.get_node("Embers").visible = main
 	(menu_panel.get_node("Veil") as ColorRect).color = Color(0.02, 0.01, 0.05, 0.75 if main else 0.6)
 	menu_box.get_node("Play").visible = main
-	menu_box.get_node("Seed").visible = main
+	menu_box.get_node("Tutorial").visible = main
+	menu_box.get_node("Help").visible = true
+	menu_box.get_node("Quit").visible = true
+	setup_box.visible = false
 	menu_box.get_node("Resume").visible = not main
 	menu_box.get_node("New").visible = not main
 	menu_box.get_node("Main").visible = not main
+
+
+## Muestra u oculta la configuración de partida dentro del menú principal.
+func _show_setup(on: bool) -> void:
+	setup_box.visible = on
+	for id in ["Play", "Tutorial", "Help", "Quit", "Subtitle", "Strip"]:
+		menu_box.get_node(id).visible = not on
 
 
 func _start_game() -> void:
@@ -632,7 +711,27 @@ func _start_game() -> void:
 	menu_panel.visible = false
 	top_bar.visible = true
 	side.visible = true
-	_new_game()
+	_end_tutorial()
+	_new_game(setup_players, setup_mode, false)
+
+
+## Partida corta y guiada: tú contra un rival, vida y Éter reducidos, semilla fija.
+func _start_tutorial() -> void:
+	in_main_menu = false
+	menu_panel.visible = false
+	top_bar.visible = true
+	side.visible = true
+	_end_tutorial()
+	_new_game(2, Game.Difficulty.PRINCIPIANTE, true)
+	tutorial = Tutorial.new()
+	add_child(tutorial)
+	tutorial.setup(self)
+
+
+func _end_tutorial() -> void:
+	if tutorial != null:
+		tutorial.close()
+		tutorial = null
 
 
 func _toggle_pause_menu() -> void:
@@ -664,7 +763,7 @@ func _start_phase_timer(seconds: float) -> void:
 
 
 func _update_phase_timer() -> void:
-	timer_row.visible = game != null and game.state in [Game.State.MARKET, Game.State.LINEUP]
+	timer_row.visible = game != null and tutorial == null and game.state in [Game.State.MARKET, Game.State.LINEUP]
 	if not timer_row.visible:
 		return
 	phase_bar.value = clampf(phase_left / phase_total, 0.0, 1.0)
@@ -674,7 +773,7 @@ func _update_phase_timer() -> void:
 
 
 func _process(delta: float) -> void:
-	if game == null or phase_left <= 0.0 or game.state not in [Game.State.MARKET, Game.State.LINEUP]:
+	if game == null or tutorial != null or phase_left <= 0.0 or game.state not in [Game.State.MARKET, Game.State.LINEUP]:
 		return
 	phase_left -= delta
 	_update_phase_timer()
@@ -861,6 +960,7 @@ func _build_market_panel() -> Control:
 	sell_button.pressed.connect(_on_sell)
 	brow.add_child(sell_button)
 	var done := Button.new()
+	market_done_button = done
 	done.text = "Listo, a alinear →"
 	done.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	GameTheme.primary_button(done)
@@ -897,6 +997,7 @@ func _build_lineup_panel() -> Control:
 		_refresh_lineup())
 	buttons.add_child(clear)
 	var go := Button.new()
+	lineup_go_button = go
 	go.text = "¡A la batalla! →"
 	go.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	go.custom_minimum_size = Vector2(0, 44)
@@ -965,6 +1066,7 @@ func _build_cycle_end_panel() -> Control:
 	table_label.add_theme_font_size_override("normal_font_size", 15)
 	box.add_child(table_label)
 	var next := Button.new()
+	next_cycle_button = next
 	next.text = "Siguiente ciclo →"
 	next.custom_minimum_size = Vector2(0, 46)
 	GameTheme.primary_button(next)
@@ -1008,7 +1110,11 @@ func _build_over_panel() -> Control:
 	again.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	again.custom_minimum_size = Vector2(0, 46)
 	GameTheme.primary_button(again)
-	again.pressed.connect(_start_game)
+	again.pressed.connect(func() -> void:
+		if tutorial != null:
+			_show_main_menu()
+		else:
+			_start_game())
 	row.add_child(again)
 	var menu := Button.new()
 	menu.text = "Menú principal"
@@ -1081,10 +1187,17 @@ func _add_skill_row(icon: Texture2D, color: Color, name: String, in_cuartel: int
 
 # ---------------------------------------------------------------- flujo
 
-func _new_game() -> void:
+func _new_game(players: int = 6, difficulty: int = Game.Difficulty.AMATEUR, is_tutorial: bool = false) -> void:
 	_auto_token += 1
 	battle_playing = false
-	game = Game.new(NAMES, int(seed_edit.text) if seed_edit.text.is_valid_int() else hash(seed_edit.text))
+	var names: PackedStringArray = ["Tú"]
+	for i in players - 1:
+		names.append(AI_NAMES[i % AI_NAMES.size()])
+	var seed_value := Tutorial.SEED if is_tutorial else (int(seed_edit.text) if seed_edit.text.is_valid_int() else hash(seed_edit.text))
+	game = Game.new(names, seed_value)
+	game.difficulty = difficulty as Game.Difficulty
+	if is_tutorial:
+		game.set_start(Tutorial.LIFE, Tutorial.ETER)
 	game.set_human(0)
 	board3d.clear_pieces()
 	table.clear()
@@ -1131,7 +1244,8 @@ func _enter_state() -> void:
 			_refresh_market()
 			_deal_market()
 		Game.State.LINEUP:
-			lineup = Game.auto_lineup(game.human)
+			# En el primer ciclo del tutorial se coloca a mano, para aprender.
+			lineup = {} if tutorial != null and game.cycle == 1 else Game.auto_lineup(game.human)
 			pending_card = null
 			_start_phase_timer(LINEUP_SECONDS)
 			_refresh_hand()
@@ -1187,7 +1301,7 @@ func _refresh_draft() -> void:
 	skip_button.visible = my_turn and table.dealt and not table_busy and not fits
 	_refresh_hand()
 	if table.dealt:
-		table.dim_unavailable(func(card: ChampionData) -> bool: return game.human.can_add(card))
+		table.dim_unavailable(func(card: ChampionData) -> bool: return game.human.can_add(card) and _tutorial_allows(card))
 	_refresh()
 
 
@@ -1208,6 +1322,10 @@ func _show_detail(box: VBoxContainer, card: ChampionData) -> void:
 	var power := _label("%s: %s" % [card.power.get("name", ""), card.power.get("text", "")])
 	power.add_theme_font_size_override("font_size", 13)
 	box.add_child(power)
+
+
+func _tutorial_allows(card: ChampionData) -> bool:
+	return tutorial == null or tutorial.allows(card)
 
 
 func _on_deck_clicked() -> void:
@@ -1245,7 +1363,7 @@ func _on_table_card_pressed(c3d: Card3D) -> void:
 	table.select(c3d)
 	if game.state == Game.State.DRAFT:
 		_refresh_draft()
-		if game.draft_current() == game.human and game.human.can_add(card):
+		if game.draft_current() == game.human and game.human.can_add(card) and _tutorial_allows(card):
 			_begin_drag({ "kind": "table_card", "card": card, "card3d": c3d }, Icons.archetype(card.archetype), card.display_name)
 	elif game.state == Game.State.MARKET:
 		_refresh_market()
@@ -1254,7 +1372,7 @@ func _on_table_card_pressed(c3d: Card3D) -> void:
 
 
 func _on_take_card() -> void:
-	if selected_card == null or not game.human_draft_pick(selected_card):
+	if selected_card == null or not _tutorial_allows(selected_card) or not game.human_draft_pick(selected_card):
 		return
 	var card := selected_card
 	var c3d := selected_card3d
@@ -1280,7 +1398,8 @@ func _deal_market() -> void:
 	_refresh_market()
 	await table.deal(game.market)
 	table_busy = false
-	_refresh_market()
+	if game.state == Game.State.MARKET:
+		_refresh_market()
 
 
 func _refresh_market() -> void:
@@ -1626,7 +1745,12 @@ func _battle_intro() -> void:
 	await get_tree().create_timer(0.5, false).timeout
 	battle_playing = false
 	if game.state == Game.State.BATTLE and game.current_battle == battle:
-		_start_battle_loop()
+		if tutorial != null and tutorial.pause_first_battle():
+			battle_paused = true
+			_auto_token += 1
+			_refresh_battle()
+		else:
+			_start_battle_loop()
 
 
 func _start_battle_loop() -> void:
@@ -1971,6 +2095,9 @@ func _screenshot_tour(dir: String) -> void:
 	_show_main_menu()
 	await get_tree().create_timer(1.2, false).timeout
 	await _snap(dir.path_join("0_menu.png"))
+	_show_setup(true)
+	await _snap(dir.path_join("0_menu_setup.png"))
+	_show_setup(false)
 	_start_game()
 	await get_tree().create_timer(0.8, false).timeout
 	await _snap(dir.path_join("1_draft_mazo.png"))
@@ -2103,6 +2230,84 @@ func _screenshot_tour(dir: String) -> void:
 		await _snap(dir.path_join("7_resultado.png"))
 		await get_tree().create_timer(2.4, false).timeout
 		await _snap(dir.path_join("8_fin_ciclo.png"))
+	get_tree().quit()
+
+
+## Recorre el tutorial haciendo lo que pide cada paso y captura cada uno.
+func _tutorial_tour(dir: String) -> void:
+	_show_main_menu()
+	await get_tree().create_timer(0.6, false).timeout
+	_start_tutorial()
+	var t := tutorial
+	var snap_i := 0
+	var last_step := -1
+	var guard := 0
+	while t != null and not t.finished and guard < 400:
+		guard += 1
+		await get_tree().create_timer(0.25, false).timeout
+		if t.index != last_step:
+			last_step = t.index
+			await get_tree().create_timer(0.5, false).timeout
+			snap_i += 1
+			await _snap(dir.path_join("t%02d_paso%02d.png" % [snap_i, t.index + 1]))
+			print("TUTORIAL paso %d: %s" % [t.index + 1, t.body.text.left(60).replace("\n", " ")])
+		if table_busy or battle_playing:
+			continue
+		match t.index:
+			0:
+				if not table.dealt:
+					_on_deck_clicked()
+			1, 2:
+				if t.allowed_card != null and game.draft_current() == game.human:
+					selected_card = t.allowed_card
+					selected_card3d = table.find_card(t.allowed_card)
+					table.select(selected_card3d)
+					_on_take_card()
+			3:
+				t._on_next()
+			4:
+				if game.state == Game.State.LINEUP:
+					if lineup.size() < game.human.cuartel.size():
+						var col := 1
+						for ch in game.human.cuartel:
+							_place_in_lineup(ch, Vector2i(col, 1))
+							col += 1
+						_refresh_lineup()
+						await get_tree().create_timer(0.5, false).timeout
+						snap_i += 1
+						await _snap(dir.path_join("t%02d_paso05_colocado.png" % snap_i))
+					else:
+						_on_lineup_done(false)
+			5, 6, 7:
+				if game.state == Game.State.BATTLE and battle_paused:
+					_step_round()
+			8:
+				if game.state == Game.State.CYCLE_END:
+					_next_cycle()
+			9:
+				if game.state == Game.State.MARKET and not game.market.is_empty():
+					for card in game.market:
+						if game.human.can_pay(card.cost) and game.human.can_add(card):
+							selected_card = card
+							selected_card3d = table.find_card(card)
+							table.select(selected_card3d)
+							_on_buy_card()
+							break
+			10:
+				if game.state == Game.State.MARKET:
+					game.human_upgrade(Adalid.Track.BATTLE)
+					_refresh_market()
+			11:
+				if game.state == Game.State.MARKET:
+					_finish_market()
+			12:
+				if game.state == Game.State.LINEUP:
+					_on_lineup_done(false)
+			13:
+				t._on_next()
+	print("TUTORIAL terminado: finished=%s, pasos capturados=%d, guard=%d" % [str(t != null and t.finished), snap_i, guard])
+	await get_tree().create_timer(0.5, false).timeout
+	await _snap(dir.path_join("t_fin_menu.png"))
 	get_tree().quit()
 
 
