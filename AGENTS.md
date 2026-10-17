@@ -111,7 +111,10 @@ muestra; solo el tutorial usa una fija. Por defecto: Amateur, 4 adalides, 4 asal
 espera a que termine la celebración y muestra una clasificación con barras de vida, lo perdido en el ciclo, Éter,
 racha y resultado (`_fill_standings`). Las acciones no permitidas se explican con `_deny(razón)` (aviso rojo
 que tiembla) y los botones deshabilitados llevan borde rojo; el Éter se representa con `assets/icons/eter.svg`
-(`Icons.eter()`, `Icons.eter_bb()` para BBCode), nunca con el rombo. En batalla, un campeón que ya atacó o usó
+(`Icons.eter()`, `Icons.eter_bb()` para BBCode), nunca con el rombo. El detalle de la carta seleccionada (draft y
+mercado) va abajo a la izquierda (`_show_card_detail`, con «✕» para deseleccionar y las líneas de combos de
+`_combo_lines`); en alineación y batalla el panel izquierdo lista los tiers activos (`_refresh_tiers_panel`).
+`Game.auto_lineup` elige el ejército con `pick_squad`, que busca tiers además de números. En batalla, un campeón que ya atacó o usó
 su poder se apaga (`ChampionPiece.set_spent`) hasta el siguiente asalto. El ojo del menú (`DemiurgeEye`) sigue el
 diseño del vídeo de victoria; al ganar, `_play_victory_video` reproduce `assets/video/victoria.ogv` (clic o Esc salta). El modo es `Game.Difficulty` y solo cambia a la IA:
 Principiante mete mucho ruido en sus puntuaciones, guarda margen antes de mejorar y compra una carta por ciclo;
@@ -120,7 +123,9 @@ si la oferta es floja. Los rivales se llaman Kaelum de las Brasas, Ysolda la Gé
 Selenia del Céfiro y Vargo Truenante (`MainScene.AI_NAMES`). «Tutorial» crea un duelo contra Kaelum con
 `Game.set_start(5, 5)` y semilla fija; `Tutorial` encadena 14 pasos (draft guiado con una carta obligada,
 salta el primer mercado, alineación a mano, primera batalla asalto a asalto, mercado y mejoras, segunda batalla
-automática, cierre). Sin temporizadores. Se prueba con `godot --path adalides -- --tutorial DIR`, que ejecuta
+automática, cierre). Con `Game.ai_handicap` el rival alinea un campeón menos que el humano, y los más flojos,
+para que el tutorial se gane; los botones Adalides/Habilidades/Crónica solo se desbloquean en el último paso
+(`panels`). Sin temporizadores. Se prueba con `godot --path adalides -- --tutorial DIR`, que ejecuta
 cada paso solo y captura pantallas.
 
 ## Cómo fluye una partida con jugador humano

@@ -10,6 +10,7 @@ enum Difficulty { PRINCIPIANTE, AMATEUR, PROFESIONAL }
 
 var difficulty: Difficulty = Difficulty.AMATEUR
 var rounds_per_battle: int = Rules.ROUNDS_PER_BATTLE # 0 = hasta que un bando caiga.
+var ai_handicap: bool = false # Tutorial: el rival del humano alinea un campeón menos, y los más flojos.
 var start_life: int = Rules.STARTING_LIFE
 
 var adalids: Array[Adalid] = []
@@ -309,7 +310,10 @@ func advance() -> State:
 		var b: Adalid = pair[1]
 		if human_in_play() and (a == human or b == human):
 			var opp: Adalid = b if a == human else a
-			current_battle = _make_battle(human, opp, [human_lineup, auto_lineup(opp)])
+			var opp_lineup := auto_lineup(opp)
+			if ai_handicap:
+				opp_lineup = _weakest_lineup(opp, maxi(human_lineup.size() - 1, 1))
+			current_battle = _make_battle(human, opp, [human_lineup, opp_lineup])
 			current_battle.start()
 			current_battle.begin_round()
 			state = State.BATTLE
@@ -319,6 +323,46 @@ func advance() -> State:
 		_after_battle(battle)
 	_end_cycle()
 	return state
+
+
+## Elige qué campeones van a batalla buscando combos: parte del más fuerte y añade cada vez
+## el que más suma entre sus números y los tiers de elemento/arquetipo que completa o acerca.
+static func pick_squad(a: Adalid) -> Array[Champion]:
+	var pool := a.cuartel.duplicate()
+	var chosen: Array[Champion] = []
+	while chosen.size() < a.battle_size() and not pool.is_empty():
+		var elems := Tiers.count_elements(chosen)
+		var archs := Tiers.count_archetypes(chosen)
+		var best: Champion = null
+		var best_score := -INF
+		for ch in pool:
+			var score := float(ch.attack() + ch.max_hp())
+			if ch.data.element >= 0:
+				var n: int = elems.get(ch.data.element, 0)
+				score += n * 1.5
+				if Rules.tier_index(n + 1, Rules.ELEMENT_TIERS) > Rules.tier_index(n, Rules.ELEMENT_TIERS):
+					score += 6.0
+			for arch in ch.data.archetypes():
+				var n: int = archs.get(arch, 0)
+				score += n * 1.5
+				if Rules.tier_index(n + 1, Rules.ARCHETYPE_TIERS) > Rules.tier_index(n, Rules.ARCHETYPE_TIERS):
+					score += 6.0
+			if score > best_score:
+				best = ch
+				best_score = score
+		chosen.append(best)
+		pool.erase(best)
+	return chosen
+
+
+## Alineación con los `n` campeones más flojos de un adalid (desventaja del tutorial).
+static func _weakest_lineup(a: Adalid, n: int) -> Dictionary:
+	var chosen := a.cuartel.duplicate()
+	chosen.sort_custom(func(x: Champion, y: Champion) -> bool: return x.attack() + x.max_hp() < y.attack() + y.max_hp())
+	var tmp := Adalid.new(a.display_name)
+	tmp.cuartel.assign(chosen.slice(0, mini(n, a.battle_size())))
+	tmp.upgrades = a.upgrades.duplicate()
+	return auto_lineup(tmp)
 
 
 func _make_battle(a: Adalid, b: Adalid, lineups: Array) -> Battle:
@@ -497,9 +541,7 @@ func ai_market(a: Adalid) -> void:
 
 ## Alineación automática: los más fuertes, cuerpo a cuerpo delante y los de alcance detrás.
 static func auto_lineup(a: Adalid) -> Dictionary:
-	var chosen := a.cuartel.duplicate()
-	chosen.sort_custom(func(x: Champion, y: Champion) -> bool: return x.attack() + x.max_hp() > y.attack() + y.max_hp())
-	chosen = chosen.slice(0, a.battle_size())
+	var chosen := pick_squad(a)
 	var lineup := {}
 	var front_cols: Array = [2, 1, 3, 0, 4]
 	var used := {}

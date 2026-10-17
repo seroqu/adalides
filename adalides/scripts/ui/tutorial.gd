@@ -98,7 +98,7 @@ func allows(card: ChampionData) -> bool:
 
 ## Si la acción está permitida en el paso actual (deal, take, buy, refresh, sell,
 ## upgrade_battle, upgrade_other, market_done, lineup_drag, lineup_auto,
-## lineup_clear, lineup_go, battle_step, battle_pause, next_cycle).
+## lineup_clear, lineup_go, battle_step, battle_pause, next_cycle, panels).
 func can(action: String) -> bool:
 	return allowed.has(action)
 
@@ -157,7 +157,7 @@ func _card_target() -> Variant:
 
 
 func _build_steps() -> void:
-	var cfg := "[b]Bienvenido, adalid.[/b] Esta partida corta te enseña lo básico: elegir cartas, colocarlas, luchar y comprar. Empiezas con [color=#7ee07e]♥ %d[/color] de vida y " + Icons.eter_bb(16) + " [color=#9ecbff]%d[/color] de Éter.\n\nEste es el [b]mazo del Demiurgo[/b]. Púlsalo para repartir." % [LIFE, ETER]
+	var cfg := ("[b]Bienvenido, adalid.[/b] Esta partida corta te enseña lo básico: elegir cartas, colocarlas, luchar y comprar. Empiezas con [color=#7ee07e]♥ %d[/color] de vida y " + Icons.eter_bb(16) + " [color=#9ecbff]%d[/color] de Éter.\n\nEste es el [b]mazo del Demiurgo[/b]. Púlsalo para repartir.") % [LIFE, ETER]
 	_step(cfg, func() -> Variant: return main.table.deck_pos + Vector3(0, 0.3, 0),
 		func() -> bool: return _my_turn(), null, null, ["deal"])
 	_step("Cada carta es un [b]campeón[/b]: el icono es su arquetipo, el color su elemento; abajo, ataque ⚔, vida ♥ y coste (cristal de Éter).\n\n[b]Arrastra «%s»[/b] hasta el panel de la derecha para tomarla.",
@@ -225,7 +225,7 @@ func _build_steps() -> void:
 		func() -> void:
 			finished = true
 			main._show_main_menu(),
-		[])
+		["panels"])
 
 
 func _go(i: int) -> void:

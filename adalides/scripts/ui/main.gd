@@ -47,6 +47,11 @@ var selected_card: ChampionData = null
 var selected_card3d: Card3D = null # La carta física elegida (puede haber copias iguales en la mesa).
 var table_busy: bool = false
 var card_detail: VBoxContainer
+var detail_panel: PanelContainer # Detalle de la carta seleccionada (abajo a la izquierda).
+var detail_box: VBoxContainer
+var tiers_panel: PanelContainer # Tiers activos en alineación y batalla (izquierda).
+var tiers_box: VBoxContainer
+var tool_buttons: Array[Button] = [] # Adalides, Habilidades, Crónica (se bloquean en el tutorial).
 var drop_zone: PanelContainer
 var drop_label: Label
 var skip_button: Button
@@ -285,9 +290,10 @@ func _build_ui() -> void:
 	tools.add_theme_constant_override("separation", 6)
 	tools.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	trow.add_child(tools)
-	tools.add_child(_tool_button("Adalides", func() -> void: _toggle_overlay(standings_panel)))
-	tools.add_child(_tool_button("Habilidades", _toggle_skills))
-	tools.add_child(_tool_button("Crónica", func() -> void: _toggle_overlay(log_panel)))
+	for pair in [["Adalides", func() -> void: _toggle_overlay(standings_panel)], ["Habilidades", _toggle_skills], ["Crónica", func() -> void: _toggle_overlay(log_panel)]]:
+		var tb := _tool_button(pair[0], pair[1])
+		tools.add_child(tb)
+		tool_buttons.append(tb)
 	var menu_b := _tool_button("☰", _toggle_pause_menu)
 	menu_b.add_theme_font_size_override("font_size", 18)
 	tools.add_child(menu_b)
@@ -476,6 +482,33 @@ func _build_ui() -> void:
 	hand_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hand_panel.add_child(hand_box)
 	hand_panel.resized.connect(_layout_hand)
+	# Detalle de la carta seleccionada: abajo a la izquierda, con botón para deseleccionar.
+	detail_panel = PanelContainer.new()
+	detail_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	detail_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	detail_panel.offset_left = 12
+	detail_panel.offset_bottom = -14
+	detail_panel.offset_right = 318
+	detail_panel.custom_minimum_size.x = 306
+	detail_panel.visible = false
+	detail_panel.add_theme_stylebox_override("panel", GameTheme.panel_style())
+	root.add_child(detail_panel)
+	detail_box = VBoxContainer.new()
+	detail_box.add_theme_constant_override("separation", 6)
+	detail_panel.add_child(detail_box)
+	# Tiers activos: izquierda, en alineación y batalla.
+	tiers_panel = PanelContainer.new()
+	tiers_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	tiers_panel.offset_left = 12
+	tiers_panel.offset_top = 96
+	tiers_panel.offset_right = 300
+	tiers_panel.custom_minimum_size.x = 288
+	tiers_panel.visible = false
+	tiers_panel.add_theme_stylebox_override("panel", GameTheme.panel_style())
+	root.add_child(tiers_panel)
+	tiers_box = VBoxContainer.new()
+	tiers_box.add_theme_constant_override("separation", 5)
+	tiers_panel.add_child(tiers_box)
 	hand_empty_label = _label("")
 	hand_empty_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	hand_empty_label.offset_top = -72
@@ -566,24 +599,6 @@ func _build_ui() -> void:
 	var glow_tw := create_tween().set_loops()
 	glow_tw.tween_property(menu_title, "modulate", Color(1.0, 0.95, 0.85), 1.6).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	glow_tw.tween_property(menu_title, "modulate", Color(0.78, 0.7, 0.62), 1.6).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	var strip := HBoxContainer.new()
-	strip.name = "Strip"
-	strip.alignment = BoxContainer.ALIGNMENT_CENTER
-	strip.add_theme_constant_override("separation", 10)
-	menu_box.add_child(strip)
-	for e in Catalog.ELEM_ORDER:
-		var ic := TextureRect.new()
-		ic.texture = Icons.element(e)
-		ic.modulate = Icons.ELEMENT_COLORS[e]
-		ic.custom_minimum_size = Vector2(28, 28)
-		ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		strip.add_child(ic)
-	var sub := _label("Autobatallas de arquetipos y elementos")
-	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	sub.add_theme_color_override("font_color", GameTheme.TEXT_DIM)
-	sub.name = "Subtitle"
-	menu_box.add_child(sub)
 	menu_box.add_child(_menu_button("Jugar", func() -> void: _show_setup(true), true, "Play"))
 	menu_box.add_child(_menu_button("Tutorial", _start_tutorial, false, "Tutorial"))
 	menu_box.add_child(_menu_button("Reanudar", _toggle_pause_menu, true, "Resume"))
@@ -756,6 +771,8 @@ func _show_main_menu() -> void:
 	table.clear()
 	table.visible = false
 	hand_panel.visible = false
+	detail_panel.visible = false
+	tiers_panel.visible = false
 	top_bar.visible = false
 	side.visible = false
 	for p in [standings_panel, log_panel, skills_panel, help_panel]:
@@ -789,9 +806,7 @@ func _decorate_board() -> void:
 
 func _set_menu_mode(main: bool) -> void:
 	menu_title.text = "Adalides del demiurgo" if main else "Pausa"
-	menu_box.get_node("Subtitle").visible = main
 	menu_box.get_node("Emblem").visible = main
-	menu_box.get_node("Strip").visible = main
 	menu_panel.get_node("Vignette").visible = main
 	menu_panel.get_node("Embers").emitting = main
 	menu_panel.get_node("Embers").visible = main
@@ -809,7 +824,7 @@ func _set_menu_mode(main: bool) -> void:
 ## Muestra u oculta la configuración de partida dentro del menú principal.
 func _show_setup(on: bool) -> void:
 	setup_box.visible = on
-	for id in ["Play", "Tutorial", "Help", "Quit", "Subtitle", "Strip"]:
+	for id in ["Play", "Tutorial", "Help", "Quit"]:
 		menu_box.get_node(id).visible = not on
 
 
@@ -1699,6 +1714,7 @@ func _new_game(players: int = 6, difficulty: int = Game.Difficulty.AMATEUR, is_t
 	game.rounds_per_battle = rounds
 	if is_tutorial:
 		game.set_start(Tutorial.LIFE, Tutorial.ETER)
+		game.ai_handicap = true
 	game.set_human(0)
 	board3d.clear_pieces()
 	table.clear()
@@ -1720,6 +1736,8 @@ func _enter_state() -> void:
 	drag_preview.visible = false
 	phase_left = 0.0
 	hand_panel.visible = game.state in [Game.State.DRAFT, Game.State.MARKET, Game.State.LINEUP]
+	detail_panel.visible = false
+	tiers_panel.visible = game.state in [Game.State.LINEUP, Game.State.BATTLE]
 	if game.state != Game.State.DRAFT and game.state != Game.State.MARKET:
 		table.clear()
 		table.visible = false
@@ -1819,11 +1837,31 @@ func _refresh_draft() -> void:
 	_refresh()
 
 
-func _show_detail(box: VBoxContainer, card: ChampionData) -> void:
-	for c in box.get_children():
+func _show_detail(_box: VBoxContainer, card: ChampionData) -> void:
+	_show_card_detail(card)
+
+
+## Detalle de la carta seleccionada abajo a la izquierda: carta, poder y con qué combina.
+func _show_card_detail(card: ChampionData) -> void:
+	for c in detail_box.get_children():
 		c.queue_free()
-	if card == null:
+	var was_visible := detail_panel.visible
+	detail_panel.visible = card != null and game != null and game.state in [Game.State.DRAFT, Game.State.MARKET]
+	if detail_panel.visible != was_visible:
+		_layout_hand()
+	if not detail_panel.visible:
 		return
+	var head := HBoxContainer.new()
+	detail_box.add_child(head)
+	var title := GameTheme.heading(card.display_name, 15)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(title)
+	var close := Button.new()
+	close.text = "✕"
+	close.tooltip_text = "Quitar la selección"
+	close.custom_minimum_size = Vector2(30, 28)
+	close.pressed.connect(_deselect_card)
+	head.add_child(close)
 	var cv := CardView.new()
 	var note := ""
 	if not game.human.can_add(card):
@@ -1831,11 +1869,160 @@ func _show_detail(box: VBoxContainer, card: ChampionData) -> void:
 	elif game.state == Game.State.MARKET and not game.human.can_pay(card.cost):
 		note = "no tienes Éter suficiente"
 	cv.setup(card, null, note)
-	cv.custom_minimum_size.x = 240
-	box.add_child(cv)
+	cv.custom_minimum_size.x = 270
+	detail_box.add_child(cv)
 	var power := _label("%s: %s" % [card.power.get("name", ""), card.power.get("text", "")])
-	power.add_theme_font_size_override("font_size", 13)
-	box.add_child(power)
+	power.add_theme_font_size_override("font_size", 12)
+	detail_box.add_child(power)
+	# Combos: qué tiers acerca o activa y con qué cartas tuyas combina.
+	var combos := _combo_lines(card)
+	if not combos.is_empty():
+		var ch := GameTheme.heading("Combos", 13)
+		detail_box.add_child(ch)
+		for line in combos:
+			var l := RichTextLabel.new()
+			l.bbcode_enabled = true
+			l.fit_content = true
+			l.scroll_active = false
+			l.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+			l.add_theme_font_size_override("normal_font_size", 12)
+			l.text = line
+			detail_box.add_child(l)
+
+
+func _deselect_card() -> void:
+	selected_card = null
+	selected_card3d = null
+	table.select(null)
+	if game.state == Game.State.MARKET:
+		_refresh_market()
+	elif game.state == Game.State.DRAFT:
+		_refresh_draft()
+
+
+## Líneas BBCode con los combos de una carta respecto a tu cuartel.
+func _combo_lines(card: ChampionData) -> PackedStringArray:
+	var out: PackedStringArray = []
+	var h := game.human
+	var elems := Tiers.count_elements(h.cuartel)
+	var archs := Tiers.count_archetypes(h.cuartel)
+	var owned := h.find_card(card.id)
+	if owned != null:
+		out.append("[color=#f0d080]Copia %d de %s[/color]: +1/+1 y poder mejorado%s." % [owned.copies + 1, card.display_name, " (AFI %d)" % Rules.AFI_BY_COPIES.get(owned.copies + 1, 0) if Rules.AFI_BY_COPIES.get(owned.copies + 1, 0) > 0 else ""])
+	if card.element >= 0:
+		var n: int = elems.get(card.element, 0)
+		out.append(_combo_line(Rules.element_label(card.element), Icons.ELEMENT_COLORS[card.element].to_html(false), n, Rules.ELEMENT_TIERS, TierTexts.ELEMENTS[card.element]))
+	for arch in card.archetypes():
+		var n: int = archs.get(arch, 0)
+		out.append(_combo_line(Rules.archetype_label(arch), "e8e4dc", n, Rules.ARCHETYPE_TIERS, TierTexts.ARCHETYPES[arch]))
+	var mates: PackedStringArray = []
+	for ch in h.cuartel:
+		if ch.data.id == card.id:
+			continue
+		var same_e := card.element >= 0 and ch.data.element == card.element
+		var same_a := false
+		for a in card.archetypes():
+			if ch.data.archetypes().has(a):
+				same_a = true
+		if same_e or same_a:
+			mates.append("%s (%s)" % [ch.data.display_name, ch.data.power.get("name", "")])
+	if not mates.is_empty():
+		out.append("[color=#aaa]Combina con:[/color] " + ", ".join(mates))
+	return out
+
+
+func _combo_line(name: String, color: String, n: int, thresholds: Array[int], text: String) -> String:
+	var after := n + 1
+	var tier_now := Rules.tier_index(n, thresholds)
+	var tier_after := Rules.tier_index(after, thresholds)
+	var head := "[color=#%s]%s[/color] %d → %d" % [color, name, n, after]
+	if tier_after > tier_now:
+		return "%s  [color=#7ee07e]✔ activa el tier %d[/color]: %s" % [head, tier_after, _first_sentence(text)]
+	var next_th := -1
+	for t in thresholds:
+		if after < t:
+			next_th = t
+			break
+	if next_th > 0:
+		return "%s  (tier con %d; faltan %d)" % [head, next_th, next_th - after]
+	return "%s  (tier máximo)" % head
+
+
+func _first_sentence(text: String) -> String:
+	var i := text.find(". ")
+	return text if i < 0 else text.substr(0, i + 1)
+
+
+## Panel de tiers activos (izquierda): los tuyos y, en batalla, los del rival.
+func _refresh_tiers_panel(mine: Array[Champion], theirs: Array[Champion] = [], rival_name := "") -> void:
+	for c in tiers_box.get_children():
+		c.queue_free()
+	tiers_panel.visible = game != null and game.state in [Game.State.LINEUP, Game.State.BATTLE]
+	if not tiers_panel.visible:
+		return
+	tiers_box.add_child(GameTheme.heading("Tus tiers en batalla", 14))
+	_tier_rows(mine, true)
+	if not theirs.is_empty():
+		var sep := HSeparator.new()
+		tiers_box.add_child(sep)
+		tiers_box.add_child(GameTheme.heading("Tiers de %s" % rival_name, 13))
+		_tier_rows(theirs, false)
+
+
+func _tier_rows(group: Array[Champion], verbose: bool) -> void:
+	var el := Tiers.count_elements(group)
+	var ar := Tiers.count_archetypes(group)
+	var any := false
+	for e in Catalog.ELEM_ORDER:
+		if el.get(e, 0) > 0:
+			any = true
+			_tier_row(Icons.element(e), Icons.ELEMENT_COLORS[e], Rules.element_label(e), el[e], Rules.ELEMENT_TIERS, TierTexts.ELEMENTS[e], verbose)
+	for a in Catalog.ARCH_ORDER:
+		if ar.get(a, 0) > 0:
+			any = true
+			_tier_row(Icons.archetype(a), Color.WHITE, Rules.archetype_label(a), ar[a], Rules.ARCHETYPE_TIERS, TierTexts.ARCHETYPES[a], verbose)
+	if not any:
+		var l := _label("Sin campeones colocados.")
+		l.add_theme_font_size_override("font_size", 12)
+		l.add_theme_color_override("font_color", GameTheme.TEXT_DIM)
+		tiers_box.add_child(l)
+
+
+func _tier_row(icon: Texture2D, color: Color, name: String, n: int, thresholds: Array[int], text: String, verbose: bool) -> void:
+	var tier := Rules.tier_index(n, thresholds)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	tiers_box.add_child(row)
+	var tr := TextureRect.new()
+	tr.texture = icon
+	tr.modulate = color if tier > 0 else color.darkened(0.45)
+	tr.custom_minimum_size = Vector2(22, 22)
+	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	tr.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(tr)
+	var l := Label.new()
+	l.text = "%s ×%d" % [name, n]
+	l.add_theme_font_override("font", GameTheme.bold_font)
+	l.add_theme_font_size_override("font_size", 13)
+	l.add_theme_color_override("font_color", GameTheme.GOLD if tier > 0 else GameTheme.TEXT_DIM)
+	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(l)
+	var chip := Label.new()
+	var next_th := -1
+	for t in thresholds:
+		if n < t:
+			next_th = t
+			break
+	chip.text = ("Tier %d ✔" % tier) if tier > 0 else ("faltan %d" % (next_th - n) if next_th > 0 else "")
+	chip.add_theme_font_size_override("font_size", 12)
+	chip.add_theme_color_override("font_color", Color(0.5, 0.88, 0.5) if tier > 0 else GameTheme.TEXT_DIM)
+	row.add_child(chip)
+	if verbose and tier > 0:
+		var d := _label(_first_sentence(text))
+		d.add_theme_font_size_override("font_size", 11)
+		d.add_theme_color_override("font_color", GameTheme.TEXT)
+		tiers_box.add_child(d)
 
 
 func _tutorial_allows(card: ChampionData) -> bool:
@@ -1865,10 +2052,16 @@ func _tut_apply_locks() -> void:
 	pause_button.disabled = not _tut_can("battle_pause")
 	step_button.disabled = not _tut_can("battle_step")
 	next_cycle_button.disabled = not _tut_can("next_cycle")
+	for tb in tool_buttons:
+		tb.disabled = not _tut_can("panels")
+		tb.tooltip_text = "" if not tb.disabled else "En el tutorial estos paneles se abren al final."
 
 
 func _on_deck_clicked() -> void:
-	if game.state != Game.State.DRAFT or table.dealt or table_busy or not _tut_can("deal"):
+	if game.state != Game.State.DRAFT or table.dealt or table_busy:
+		return
+	if not _tut_can("deal"):
+		_deny("Ahora no toca repartir: sigue el paso del tutorial.")
 		return
 	table_busy = true
 	_update_deck_label()
@@ -1897,6 +2090,9 @@ func _on_table_card_pressed(c3d: Card3D) -> void:
 	if table_busy:
 		return
 	var card := c3d.card
+	if selected_card == card and selected_card3d == c3d and game.state == Game.State.MARKET and _buy_block_reason(card) != "":
+		_deselect_card() # Segundo clic en una carta que no se puede comprar: se quita la selección.
+		return
 	selected_card = card
 	selected_card3d = c3d
 	table.select(c3d)
@@ -2074,6 +2270,7 @@ func _refresh_hand() -> void:
 		cv.pressed.connect(func() -> void:
 			if game.state == Game.State.MARKET:
 				if not _tut_can("sell"):
+					_deny("Ahora no toca vender: sigue el paso del tutorial.")
 					return
 				selected_cuartel = ch
 				_refresh_market()
@@ -2105,14 +2302,15 @@ func _layout_hand() -> void:
 	var n := cards.size()
 	if n == 0:
 		return
-	var panel_w := hand_panel.size.x
+	var left := 320.0 if detail_panel != null and detail_panel.visible else 0.0
+	var panel_w := hand_panel.size.x - left
 	var pitch := minf(HandCard.W + 12.0, (panel_w - HandCard.W - 40.0) / float(maxi(n - 1, 1)))
 	var mid := (n - 1) / 2.0
 	var base_y := hand_panel.size.y - HandCard.H - 6.0
 	for i in n:
 		var c := cards[i]
 		var off := i - mid
-		var pos := Vector2(panel_w / 2.0 + off * pitch - HandCard.W / 2.0, base_y + off * off * 4.0)
+		var pos := Vector2(left + panel_w / 2.0 + off * pitch - HandCard.W / 2.0, base_y + off * off * 4.0)
 		var rot := clampf(off * 3.5, -14.0, 14.0)
 		c.base_position = pos
 		c.base_rotation = rot
@@ -2267,6 +2465,7 @@ func _refresh_lineup() -> void:
 	board3d.highlight_tiles(free)
 	var chosen: Array[Champion] = []
 	chosen.assign(lineup.values())
+	_refresh_tiers_panel(chosen)
 	var errors := Game.validate_lineup(game.human, lineup)
 	var tiers := Tiers.describe(chosen)
 	lineup_info.text = "%d/%d en batalla · Tiers: %s %s" % [lineup.size(), game.human.battle_size(),
@@ -2500,6 +2699,8 @@ func _play_round() -> void:
 
 func _announce_battle(battle: Battle) -> void:
 	var r := battle.result
+	if tutorial != null:
+		print("TUTORIAL ciclo %d: %s" % [game.cycle, "victoria" if r.get("winner") == game.human else ("empate" if r.get("tie", false) else "derrota")])
 	var winner: Adalid = r.get("winner", null)
 	if winner != null:
 		for ch in board3d.pieces:
@@ -2804,6 +3005,7 @@ func _refresh_battle_hud(battle: Battle) -> void:
 		var a := battle.adalids[side]
 		battle_names[side].text = ("Tú" if a == game.human else a.display_name)
 	_refresh_battle_hp(battle)
+	_refresh_tiers_panel(battle.board.champions(0), battle.board.champions(1), battle.adalids[1].display_name)
 
 
 ## Vida de los adalides (número) y vida total de sus campeones (barra). Se llama tras cada golpe.
